@@ -54,11 +54,13 @@ vertical_alignment = 1
 [node name="Gate1" type="Sprite2D" parent="ExitGates"]
 modulate = Color(0.5, 0.5, 0.5, 1)
 position = Vector2(48, 608)
+scale = Vector2(0.375, 0.375)
 texture = ExtResource("2_3vb7k")
 
 [node name="Gate2" type="Sprite2D" parent="ExitGates"]
 modulate = Color(0.5, 0.5, 0.5, 1)
 position = Vector2(592, 608)
+scale = Vector2(0.375, 0.375)
 texture = ExtResource("2_3vb7k")
 
 [node name="Ghosts" type="Node2D" parent="."]
