@@ -9,14 +9,16 @@ signal player_caught
 # AI variables
 var tilemap_layer: TileMapLayer  # Updated for Godot 4.4
 var target_player: Node2D
-var move_speed: float = 80.0
+var move_speed: float = 100.0
 var tile_size: int = 32
 var current_direction: Vector2 = Vector2.ZERO
+var next_direction: Vector2 = Vector2.ZERO
 var grid_position: Vector2
 var target_position: Vector2
 var is_moving: bool = false
 var ai_timer: float = 0.0
-var ai_update_interval: float = 0.5
+var ai_update_interval: float = 0.3  # Faster AI updates
+var movement_precision: float = 2.0  # How close to target before snapping
 
 # Pathfinding
 var path: Array = []
@@ -54,62 +56,76 @@ func _process(delta):
 	if not tilemap_layer or not target_player:
 		return
 	
+	# Update AI less frequently but move every frame
 	ai_timer += delta
 	if ai_timer >= ai_update_interval:
 		ai_timer = 0.0
 		update_ai()
 	
+	# Always try to move
 	move_towards_target(delta)
 
 func update_ai():
-	# Simple AI: move towards player with some randomness
+	# Only change direction when not currently moving or at intersection
+	if is_moving:
+		return
+	
+	# Get player position
 	var player_grid_pos = Vector2(
 		int(target_player.position.x / float(tile_size)),
 		int(target_player.position.y / float(tile_size))
 	)
 	
 	# Calculate direction to player
-	var direction_to_player = (player_grid_pos - grid_position).normalized()
+	var direction_to_player = player_grid_pos - grid_position
 	
-	# Add some randomness (30% chance to move randomly)
+	# Choose next direction (80% chase, 20% random)
 	var target_direction: Vector2
-	if randf() < 0.7:  # 70% chase player
+	if randf() < 0.8:  # 80% chase player
 		target_direction = get_best_direction_to_player(direction_to_player)
-	else:  # 30% random movement
+	else:  # 20% random movement
 		var random_directions = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
 		target_direction = random_directions[randi() % random_directions.size()]
 	
-	# Check if we can move in that direction
-	if can_move_to(grid_position + target_direction):
-		current_direction = target_direction
-		target_position = grid_to_world(grid_position + current_direction)
-		is_moving = true
-
-func get_best_direction_to_player(preferred_direction: Vector2) -> Vector2:
-	# Try preferred direction first
-	if abs(preferred_direction.x) > abs(preferred_direction.y):
-		# Move horizontally
-		var horizontal_dir = Vector2(sign(preferred_direction.x), 0)
-		if can_move_to(grid_position + horizontal_dir):
-			return horizontal_dir
-		# Fall back to vertical
-		var vertical_dir = Vector2(0, sign(preferred_direction.y))
-		if can_move_to(grid_position + vertical_dir):
-			return vertical_dir
+	# Start movement if direction is valid
+	if target_direction != Vector2.ZERO and can_move_to(grid_position + target_direction):
+		next_direction = target_direction
+		start_movement()
 	else:
-		# Move vertically
-		var vertical_dir = Vector2(0, sign(preferred_direction.y))
-		if can_move_to(grid_position + vertical_dir):
-			return vertical_dir
-		# Fall back to horizontal
-		var horizontal_dir = Vector2(sign(preferred_direction.x), 0)
-		if can_move_to(grid_position + horizontal_dir):
-			return horizontal_dir
+		# Try any valid direction if stuck
+		var fallback_directions = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
+		for dir in fallback_directions:
+			if can_move_to(grid_position + dir):
+				next_direction = dir
+				start_movement()
+				break
+
+func start_movement():
+	current_direction = next_direction
+	target_position = grid_to_world(grid_position + current_direction)
+	is_moving = true
+
+func get_best_direction_to_player(direction_to_player: Vector2) -> Vector2:
+	if direction_to_player == Vector2.ZERO:
+		return Vector2.ZERO
 	
-	# If neither works, try any valid direction
-	var directions = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
-	for dir in directions:
-		if can_move_to(grid_position + dir):
+	# Determine primary direction (horizontal or vertical)
+	var directions_to_try = []
+	
+	if abs(direction_to_player.x) > abs(direction_to_player.y):
+		# Horizontal movement is preferred
+		var horizontal_dir = Vector2(sign(direction_to_player.x), 0)
+		var vertical_dir = Vector2(0, sign(direction_to_player.y))
+		directions_to_try = [horizontal_dir, vertical_dir]
+	else:
+		# Vertical movement is preferred
+		var vertical_dir = Vector2(0, sign(direction_to_player.y))
+		var horizontal_dir = Vector2(sign(direction_to_player.x), 0)
+		directions_to_try = [vertical_dir, horizontal_dir]
+	
+	# Try directions in order of preference
+	for dir in directions_to_try:
+		if dir != Vector2.ZERO and can_move_to(grid_position + dir):
 			return dir
 	
 	return Vector2.ZERO
@@ -118,20 +134,22 @@ func move_towards_target(delta):
 	if not is_moving:
 		return
 	
-	# Move towards target position
-	var movement = current_direction * move_speed * delta
-	position = position.move_toward(target_position, movement.length())
+	# Move towards target position with constant speed
+	var movement_distance = move_speed * delta
+	position = position.move_toward(target_position, movement_distance)
 	
-	# Check if reached target
-	if position.distance_to(target_position) < 2.0:
+	# Check if reached target with precision
+	if position.distance_to(target_position) <= movement_precision:
+		# Snap to exact grid position
 		grid_position += current_direction
 		position = grid_to_world(grid_position)
 		is_moving = false
 		current_direction = Vector2.ZERO
+		next_direction = Vector2.ZERO
 
 func can_move_to(grid_pos: Vector2) -> bool:
-	# Check bounds
-	if grid_pos.x < 0 or grid_pos.x >= 11 or grid_pos.y < 0 or grid_pos.y >= 14:
+	# More flexible bounds - allow ghosts to move in larger area
+	if grid_pos.x < -1 or grid_pos.x >= 22 or grid_pos.y < -1 or grid_pos.y >= 16:
 		return false
 	
 	# Check for walls in tilemap layer (updated for Godot 4.4)

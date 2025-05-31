@@ -1,18 +1,5 @@
 extends Control
 
-# Inspector customizable animation settings
-@export_group("Animation Settings")
-@export var kick_up_distance: float = 20.0  # How far symbols move up before spinning
-@export var kick_up_duration: float = 0.2   # Duration of the upward kick
-@export var base_spin_duration: float = 2.5  # Base spinning duration
-@export var spin_stagger_delay: float = 0.6  # Delay between each reel stopping
-@export var total_rotations: float = 4.0     # How many full rotations during spin
-@export var ease_out_strength: float = 2.0   # How strong the ease-out effect is
-
-@export_group("Handle Settings")
-@export var handle_pull_threshold: float = 60.0  # How far to pull handle
-@export var handle_return_speed: float = 0.4     # Speed of handle return animation
-
 # UI References
 @onready var debt_label = $UI/TopPanel/DebtLabel
 @onready var coins_label = $UI/TopPanel/CoinsLabel
@@ -26,14 +13,13 @@ extends Control
 @onready var reel3 = $SlotMachine/Reels/Reel3
 @onready var result_label = $UI/CenterPanel/ResultLabel
 
-# Handle mechanics - Fixed dragging system
+# Handle mechanics
 var handle_original_pos: Vector2
 var is_handle_dragging: bool = false
 var handle_pulled: bool = false
-var drag_start_pos: Vector2
-var handle_tween: Tween
+var handle_pull_threshold: float = 50.0
 
-# Reel mechanics
+# Reel mechanics - Optimized for performance
 var reel_symbols: Array[String] = [
 	"res://Sprites/cherry.png",
 	"res://Sprites/lemon.png", 
@@ -47,8 +33,8 @@ var reel_symbol_names: Array[String] = ["Cherry", "Lemon", "Orange", "Bell", "St
 var loaded_textures: Array[Texture2D] = []
 var is_spinning: bool = false
 
-# Animation system - symbols only, not containers
-var final_symbols: Array[int] = [0, 0, 0]
+# Simplified reel system for better performance
+var final_symbols: Array[int] = [0, 0, 0]  # Final symbols to display
 var spin_tweens: Array[Tween] = []
 
 # Upgrade shop
@@ -76,7 +62,7 @@ func _ready():
 	# Preload textures safely
 	preload_symbol_textures()
 	
-	# Set up handle with proper mouse tracking
+	# Set up handle with error checking
 	setup_handle()
 	
 	# Connect button signals with null checks
@@ -109,28 +95,28 @@ func preload_symbol_textures():
 			print("✅ Loaded: ", reel_symbol_names[i])
 		else:
 			print("❌ Failed: ", symbol_path)
+			# Create a fallback texture or use null
 			loaded_textures.append(null)
 	
 	print("🎨 Textures loaded: ", loaded_textures.size(), "/", reel_symbols.size())
 
 func setup_handle():
-	"""Set up handle with proper global mouse tracking"""
+	"""Set up handle with proper null checking"""
 	if not handle:
 		print("⚠️ Handle not found")
 		return
 	
 	handle_original_pos = handle.position
 	
-	# Create input detector with proper size
+	# Create input detector as a simple Control node
 	var input_detector = Control.new()
 	input_detector.name = "InputDetector"
-	input_detector.size = handle.size if handle.size != Vector2.ZERO else Vector2(50, 100)
-	input_detector.position = Vector2.ZERO  # Position relative to handle
+	input_detector.size = Vector2(50, 100)  # Fixed size
 	input_detector.gui_input.connect(_on_handle_input)
 	input_detector.mouse_filter = Control.MOUSE_FILTER_PASS
 	handle.add_child(input_detector)
 	
-	print("🕹️ Handle setup complete - Size: ", input_detector.size)
+	print("🕹️ Handle setup complete")
 
 func initialize_reels():
 	"""Initialize reels with random symbols"""
@@ -143,7 +129,7 @@ func initialize_reels():
 			display_symbol_on_reel(reels[i], random_symbol)
 
 func display_symbol_on_reel(reel_control: Control, symbol_index: int):
-	"""Display a single symbol on a reel - containers stay in place"""
+	"""Display a single symbol on a reel"""
 	if not reel_control:
 		return
 	
@@ -154,15 +140,14 @@ func display_symbol_on_reel(reel_control: Control, symbol_index: int):
 	# Wait one frame for children to be freed
 	await get_tree().process_frame
 	
-	# Create symbol display at normal position (0, 0) within the reel container
+	# Create symbol display
 	if symbol_index < loaded_textures.size() and loaded_textures[symbol_index]:
 		# Use texture
 		var texture_rect = TextureRect.new()
 		texture_rect.texture = loaded_textures[symbol_index]
 		texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		texture_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		texture_rect.position = Vector2.ZERO  # Start at container's origin
-		texture_rect.size = reel_control.size
+		texture_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		reel_control.add_child(texture_rect)
 	else:
 		# Fallback to text
@@ -175,79 +160,46 @@ func display_symbol_on_reel(reel_control: Control, symbol_index: int):
 		label.add_theme_font_size_override("font_size", 24)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.position = Vector2.ZERO
-		label.size = reel_control.size
+		label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		reel_control.add_child(label)
 
-# Fixed handle input system
 func _on_handle_input(event):
-	"""Handle input with proper mouse tracking"""
-	if is_spinning or not GameManager.can_spin():
+	"""Handle input with proper error checking"""
+	if not handle or is_spinning or not GameManager.can_spin():
 		return
 	
 	if event is InputEventMouseButton:
 		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			start_handle_drag(event.global_position)
+			start_handle_drag()
 		elif not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			release_handle()
 	
 	elif event is InputEventMouseMotion and is_handle_dragging:
-		update_handle_drag(event.global_position)
+		var pull_distance = event.position.y
+		pull_distance = max(0, pull_distance)  # Only allow downward pull
+		
+		# Update handle position safely
+		if handle:
+			handle.position.y = handle_original_pos.y + min(pull_distance, handle_pull_threshold)
+		
+		# Check if pulled enough
+		if pull_distance >= handle_pull_threshold and not handle_pulled:
+			handle_pulled = true
+			trigger_spin()
 
-# Global mouse release detection to fix sticky handle
-func _input(event):
-	"""Global input handling to catch mouse release anywhere"""
-	if event is InputEventMouseButton:
-		if not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			if is_handle_dragging:
-				release_handle()
-
-func start_handle_drag(global_mouse_pos: Vector2):
-	"""Start handle dragging with proper position tracking"""
-	if not handle:
-		return
-	
-	print("🖱️ Handle drag started")
+func start_handle_drag():
+	"""Start handle dragging"""
 	is_handle_dragging = true
 	handle_pulled = false
-	drag_start_pos = global_mouse_pos
-	
-	# Stop any existing handle animation
-	if handle_tween and handle_tween.is_valid():
-		handle_tween.kill()
-
-func update_handle_drag(global_mouse_pos: Vector2):
-	"""Update handle position based on mouse movement"""
-	if not handle or not is_handle_dragging:
-		return
-	
-	# Calculate pull distance from initial click position
-	var pull_distance = global_mouse_pos.y - drag_start_pos.y
-	pull_distance = max(0, pull_distance)  # Only allow downward pull
-	
-	# Update handle position with clamping
-	var new_y = handle_original_pos.y + min(pull_distance, handle_pull_threshold)
-	handle.position.y = new_y
-	
-	# Check if pulled enough to trigger spin
-	if pull_distance >= handle_pull_threshold and not handle_pulled:
-		handle_pulled = true
-		print("🎰 Handle pulled - triggering spin!")
-		trigger_spin()
 
 func release_handle():
-	"""Release handle and animate back to original position"""
-	if not is_handle_dragging:
-		return
-	
-	print("🖱️ Handle released")
+	"""Release handle and animate back"""
 	is_handle_dragging = false
 	
-	# Animate handle back to original position
 	if handle:
-		handle_tween = create_tween()
-		handle_tween.tween_property(handle, "position", handle_original_pos, handle_return_speed)
-		handle_tween.tween_callback(func(): handle_pulled = false)
+		var tween = create_tween()
+		tween.tween_property(handle, "position", handle_original_pos, 0.3)
+		tween.tween_callback(func(): handle_pulled = false)
 
 func _on_spin_button_pressed():
 	"""Handle spin button press"""
@@ -255,14 +207,14 @@ func _on_spin_button_pressed():
 		trigger_spin()
 
 func trigger_spin():
-	"""Start the spinning process with kick-up animation"""
+	"""Start the spinning process"""
 	if is_spinning or not GameManager.can_spin():
 		return
 	
-	print("🎰 Starting spin with kick-up animation...")
+	print("🎰 Starting spin...")
 	is_spinning = true
 	
-	# Get spin result first
+	# Get spin result first (this determines final symbols)
 	var spin_result = GameManager.perform_spin()
 	if not spin_result.get("success", true):
 		print("❌ Spin failed: ", spin_result.get("reason", "unknown"))
@@ -279,8 +231,8 @@ func trigger_spin():
 	# Play audio safely
 	play_audio(audio_spin)
 	
-	# Start with kick-up animation, then spinning
-	start_kickup_animation()
+	# Start visual spinning animation
+	start_spin_animation()
 
 func set_final_symbols_from_result(result: Dictionary):
 	"""Set the final symbols based on the spin result"""
@@ -288,117 +240,90 @@ func set_final_symbols_from_result(result: Dictionary):
 	
 	match result.type:
 		"jackpot":
+			# All sevens
 			final_symbols = [6, 6, 6]  # Seven is at index 6
 			print("🎉 JACKPOT: Three Sevens!")
 		
 		"coin_win", "debt_win":
+			# Two matching symbols
 			var winning_symbol = randi() % 5  # Use first 5 symbols for wins
 			var different_symbol = (winning_symbol + 1 + randi() % 4) % reel_symbols.size()
 			final_symbols = [winning_symbol, winning_symbol, different_symbol]
 			print("💰 WIN: ", reel_symbol_names[winning_symbol], " x2 + ", reel_symbol_names[different_symbol])
 		
 		_:  # "loss" or any other case
+			# Three different symbols
 			var symbol1 = randi() % reel_symbols.size()
 			var symbol2 = (symbol1 + 1 + randi() % 3) % reel_symbols.size()
 			var symbol3 = (symbol2 + 1 + randi() % 3) % reel_symbols.size()
 			final_symbols = [symbol1, symbol2, symbol3]
 			print("💸 LOSS: ", reel_symbol_names[symbol1], ", ", reel_symbol_names[symbol2], ", ", reel_symbol_names[symbol3])
 
-func start_kickup_animation():
-	"""Start with kick-up animation - move symbols UP inside containers"""
+func start_spin_animation():
+	"""Start simplified spin animation for better performance"""
 	var reels = [reel1, reel2, reel3]
 	
 	# Clear any existing tweens
-	clear_spin_tweens()
+	for tween in spin_tweens:
+		if tween and tween.is_valid():
+			tween.kill()
+	spin_tweens.clear()
 	
-	print("⬆️ Starting kick-up animation...")
-	
-	# Create kick-up animation for symbols inside each reel
+	# Create spinning effect for each reel
 	for i in range(reels.size()):
 		if not reels[i]:
 			continue
 		
 		var reel = reels[i]
+		var final_symbol = final_symbols[i]
 		
-		# Get the symbol child inside the reel container
-		if reel.get_child_count() > 0:
-			var symbol_node = reel.get_child(0)
-			
-			# Create kick-up tween for the symbol (not the container)
-			var kickup_tween = create_tween()
-			spin_tweens.append(kickup_tween)
-			
-			# Move symbol UP by kick_up_distance
-			var original_pos = Vector2.ZERO  # Symbols start at (0,0) within container
-			var kick_target = Vector2(0, -kick_up_distance)
-			
-			kickup_tween.tween_property(symbol_node, "position", kick_target, kick_up_duration)
-			kickup_tween.tween_callback(func(): start_individual_reel_spin(i))
+		# Create tween for this reel
+		var tween = create_tween()
+		spin_tweens.append(tween)
+		
+		# Animate spinning effect
+		var spin_duration = 1.5 + (i * 0.4)  # Staggered timing
+		
+		# Simple rotation-based spinning effect
+		tween.tween_method(
+			func(angle): animate_reel_spin(reel, angle, final_symbol),
+			0.0,
+			360.0 * 3,  # 3 full rotations
+			spin_duration
+		).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUART)
+		
+		# When the last reel finishes, complete the spin
+		if i == reels.size() - 1:
+			tween.tween_callback(complete_spin)
 
-func start_individual_reel_spin(reel_index: int):
-	"""Start spinning animation for an individual reel"""
-	var reels = [reel1, reel2, reel3]
-	if reel_index >= reels.size() or not reels[reel_index]:
-		return
-	
-	var reel = reels[reel_index]
-	var final_symbol = final_symbols[reel_index]
-	
-	print("🎡 Starting spin for reel ", reel_index + 1)
-	
-	# Create main spinning tween
-	var spin_tween = create_tween()
-	spin_tweens.append(spin_tween)
-	
-	# Calculate timing with stagger
-	var spin_duration = base_spin_duration + (reel_index * spin_stagger_delay)
-	
-	# Spin symbols inside the container (containers stay in place)
-	spin_tween.tween_method(
-		func(progress): animate_symbol_spin(reel, progress, final_symbol),
-		0.0,
-		1.0,  # Progress from 0 to 1
-		spin_duration
-	).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUART)
-	
-	# When the last reel finishes, complete the spin
-	if reel_index == reels.size() - 1:
-		spin_tween.tween_callback(complete_spin)
-
-func animate_symbol_spin(reel: Control, progress: float, final_symbol: int):
-	"""Animate symbol spinning inside the reel container (container stays in place)"""
+func animate_reel_spin(reel: Control, angle: float, final_symbol: int):
+	"""Animate reel with rotation effect"""
 	if not reel:
 		return
 	
-	# Calculate symbol rotation (multiple full rotations)
-	var total_angle = progress * 360.0 * total_rotations
+	# Calculate which symbol to show based on angle
 	var symbol_count = reel_symbols.size()
-	var current_symbol_index = int(total_angle / (360.0 / symbol_count)) % symbol_count
+	var current_symbol_index = int(angle / 51.4) % symbol_count  # ~51.4 degrees per symbol
 	
-	# In the last 20% of animation, lock to final symbol
-	if progress > 0.8:
+	# Near the end of animation, lock to final symbol
+	if angle > 900:  # Last 180 degrees
 		current_symbol_index = final_symbol
 	
-	# Clear existing symbol children
+	# Clear and display current symbol
 	for child in reel.get_children():
 		child.queue_free()
 	
-	# Calculate symbol position within container (move down from kick-up to normal)
-	var symbol_y_pos = lerp(-kick_up_distance, 0.0, progress)
-	
-	# Create symbol at calculated position
+	# Create symbol with rotation effect
 	if current_symbol_index < loaded_textures.size() and loaded_textures[current_symbol_index]:
 		var texture_rect = TextureRect.new()
 		texture_rect.texture = loaded_textures[current_symbol_index]
 		texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		texture_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		texture_rect.position = Vector2(0, symbol_y_pos)  # Animate Y position within container
-		texture_rect.size = reel.size
+		texture_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		
-		# Add spinning wobble effect (only during active spinning)
-		if progress < 0.8:
-			var wobble_intensity = (1.0 - progress) * 10.0  # Decrease wobble as it slows down
-			texture_rect.rotation = deg_to_rad(sin(total_angle * 0.1) * wobble_intensity)
+		# Add slight rotation for spinning effect
+		if angle < 900:
+			texture_rect.rotation = deg_to_rad(sin(angle * 0.1) * 5)  # Subtle wobble
 		
 		reel.add_child(texture_rect)
 	else:
@@ -412,21 +337,12 @@ func animate_symbol_spin(reel: Control, progress: float, final_symbol: int):
 		label.add_theme_font_size_override("font_size", 24)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.position = Vector2(0, symbol_y_pos)
-		label.size = reel.size
+		label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		
-		if progress < 0.8:
-			var wobble_intensity = (1.0 - progress) * 10.0
-			label.rotation = deg_to_rad(sin(total_angle * 0.1) * wobble_intensity)
+		if angle < 900:
+			label.rotation = deg_to_rad(sin(angle * 0.1) * 5)
 		
 		reel.add_child(label)
-
-func clear_spin_tweens():
-	"""Clear all active spin tweens"""
-	for tween in spin_tweens:
-		if tween and tween.is_valid():
-			tween.kill()
-	spin_tweens.clear()
 
 func complete_spin():
 	"""Complete the spin and show results"""
@@ -437,11 +353,13 @@ func complete_spin():
 	if spin_button:
 		spin_button.disabled = false
 	
-	# Ensure final symbols are displayed at normal position (0,0) within containers
+	# Final display of symbols
 	var reels = [reel1, reel2, reel3]
 	for i in range(reels.size()):
 		if reels[i]:
 			display_symbol_on_reel(reels[i], final_symbols[i])
+	
+	# The result will be shown via the GameManager signal
 
 func _on_spin_completed(result: Dictionary):
 	"""Handle spin completion from GameManager"""
@@ -596,7 +514,8 @@ func play_audio(audio_player: AudioStreamPlayer2D):
 # Cleanup function
 func _exit_tree():
 	"""Clean up when exiting"""
-	clear_spin_tweens()
-	
-	if handle_tween and handle_tween.is_valid():
-		handle_tween.kill()
+	# Stop all tweens
+	for tween in spin_tweens:
+		if tween and tween.is_valid():
+			tween.kill()
+	spin_tweens.clear()
