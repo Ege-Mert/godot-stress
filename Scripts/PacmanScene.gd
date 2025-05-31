@@ -54,8 +54,11 @@ var wall_phasing_ghost_spawned: bool = false
 # Movement variables
 var move_speed: float = 150.0  # Will be modified by upgrades
 var player_direction: Vector2 = Vector2.ZERO
+var next_player_direction: Vector2 = Vector2.ZERO  # Input buffer
 var player_grid_pos: Vector2
 var target_pos: Vector2
+var player_is_moving: bool = false
+var movement_precision: float = 2.0
 
 # Ghost management
 var normal_ghosts: Array = []
@@ -69,9 +72,32 @@ var ghost_spawn_interval: float = 30.0
 @onready var audio_death = $Audio/Death
 @onready var audio_gate_open = $Audio/GateOpen
 
+func setup_screen_adaptation():
+	# Get the viewport size
+	var viewport_size = get_viewport().get_visible_rect().size
+	var game_area_size = Vector2(640, 640)  # Approximate game area size
+	
+	# Calculate scale to fit screen while maintaining aspect ratio
+	var scale_factor = min(
+		viewport_size.x / game_area_size.x,
+		viewport_size.y / game_area_size.y
+	) * 0.9  # 90% of screen to leave some padding
+	
+	# Apply scale to the entire scene
+	scale = Vector2(scale_factor, scale_factor)
+	
+	# Center the scaled content
+	var scaled_size = game_area_size * scale_factor
+	position = (viewport_size - scaled_size) / 2
+	
+	print("Screen adaptation: viewport=", viewport_size, " scale=", scale_factor, " position=", position)
+
 func _ready():
 	# Connect to GameManager
 	GameManager.pacman_exit_available.connect(_on_exit_available)
+	
+	# Center and scale the level for different screen sizes
+	setup_screen_adaptation()
 	
 	# Initialize game
 	setup_game()
@@ -182,6 +208,8 @@ func spawn_wall_phasing_ghost():
 	# Visual/audio feedback
 	if enable_audio and audio_ghost_spawn and audio_ghost_spawn.stream:
 		audio_ghost_spawn.play()
+	elif enable_audio and audio_ghost_spawn:
+		print("Warning: audio_ghost_spawn has no stream")
 	
 	warning_label.text = "SPECIAL DEBT COLLECTOR SPAWNED!"
 	warning_label.modulate = Color.RED
@@ -200,43 +228,59 @@ func _process(delta):
 		update_ghost_spawning(delta)
 
 func handle_input():
-	var new_direction = Vector2.ZERO
+	# Capture input for direction buffer
+	var input_direction = Vector2.ZERO
 	
 	if Input.is_action_pressed("ui_up"):
-		new_direction = Vector2(0, -1)
+		input_direction = Vector2(0, -1)
 	elif Input.is_action_pressed("ui_down"):
-		new_direction = Vector2(0, 1)
+		input_direction = Vector2(0, 1)
 	elif Input.is_action_pressed("ui_left"):
-		new_direction = Vector2(-1, 0)
+		input_direction = Vector2(-1, 0)
 	elif Input.is_action_pressed("ui_right"):
-		new_direction = Vector2(1, 0)
+		input_direction = Vector2(1, 0)
 	
-	# Try to change direction if valid
-	if new_direction != Vector2.ZERO and can_move_to(player_grid_pos + new_direction):
-		player_direction = new_direction
+	# Store input for next movement opportunity
+	if input_direction != Vector2.ZERO:
+		next_player_direction = input_direction
+	
+	# Try to start movement immediately if not moving
+	if not player_is_moving and next_player_direction != Vector2.ZERO:
+		try_start_movement()
+
+func try_start_movement():
+	# Try to start movement in the buffered direction
+	if can_move_to(player_grid_pos + next_player_direction):
+		player_direction = next_player_direction
 		target_pos = grid_to_world(player_grid_pos + player_direction)
-	
-	# Exit functionality removed - now handled by gate collision
+		player_is_moving = true
+		next_player_direction = Vector2.ZERO  # Clear buffer
 
 func update_player_movement(delta):
-	if player_direction == Vector2.ZERO:
+	if not player_is_moving:
 		return
 	
-	# Move towards target
-	var movement = player_direction * move_speed * delta
-	player.position = player.position.move_toward(target_pos, movement.length())
+	# Move towards target with constant speed
+	var movement_distance = move_speed * delta
+	player.position = player.position.move_toward(target_pos, movement_distance)
 	
-	# Check if reached target (configurable precision)
-	if player.position.distance_to(target_pos) < movement_smoothness:
+	# Check if reached target
+	if player.position.distance_to(target_pos) <= movement_precision:
+		# Snap to exact grid position
 		player_grid_pos += player_direction
 		player.position = grid_to_world(player_grid_pos)
+		player_is_moving = false
 		
-		# Check for continued movement
-		if can_move_to(player_grid_pos + player_direction):
+		# Try to continue movement in current direction or use buffered input
+		if next_player_direction != Vector2.ZERO:
+			try_start_movement()  # Try buffered direction first
+		elif can_move_to(player_grid_pos + player_direction):
+			# Continue in same direction
 			target_pos = grid_to_world(player_grid_pos + player_direction)
+			player_is_moving = true
 		else:
+			# Stop movement
 			player_direction = Vector2.ZERO
-			target_pos = player.position
 	
 	# Collect coins at current position and nearby (magnetism)
 	var grid_pos = world_to_grid(player.position)
@@ -356,6 +400,10 @@ func _on_coin_picked_up():
 	
 	if enable_audio and audio_coin_pickup and audio_coin_pickup.stream:
 		audio_coin_pickup.play()
+	elif enable_audio and audio_coin_pickup:
+		print("Warning: audio_coin_pickup has no stream")
+	elif enable_audio:
+		print("Warning: audio_coin_pickup node not found")
 	
 	# Let GameManager handle the coin collection
 	var _trigger_phasing_ghost = GameManager.collect_pacman_coin()  # Prefixed with _
@@ -379,6 +427,8 @@ func _on_exit_available():
 	
 	if enable_audio and audio_gate_open and audio_gate_open.stream:
 		audio_gate_open.play()
+	elif enable_audio and audio_gate_open:
+		print("Warning: audio_gate_open has no stream")
 	
 	exit_prompt_label.text = "EXIT GATES OPENED! Walk into a gate to exit the maze."
 	exit_prompt_label.modulate = Color.GREEN
@@ -403,6 +453,8 @@ func _on_player_caught():
 	# Normal ghost caught player - lose coins and respawn
 	if enable_audio and audio_death and audio_death.stream:
 		audio_death.play()
+	elif enable_audio and audio_death:
+		print("Warning: audio_death has no stream")
 	
 	coins_collected = max(0, coins_collected - coins_lost_on_death)
 	player_grid_pos = player_start_pos

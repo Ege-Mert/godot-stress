@@ -8,6 +8,7 @@ var is_first_spin: bool = true
 var is_first_pacman: bool = true
 var has_collected_first_10_coins: bool = false
 var is_tutorial_mode: bool = true  # Track tutorial state
+var game_session_started: bool = false  # Track if this is truly the first game session
 
 # Upgrade levels
 var slot_upgrades = {
@@ -40,6 +41,14 @@ signal evil_laugh_trigger()
 func _ready():
 	# Set up autoload persistence
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	
+	# Mark that the game session has started
+	if not game_session_started:
+		game_session_started = true
+		is_first_spin = true  # Only set first spin on true first load
+		print("Game session started - first spin will have special odds")
+	else:
+		print("Scene reloaded - maintaining spin state")
 
 # Slot machine functions
 func can_spin() -> bool:
@@ -96,16 +105,22 @@ func calculate_spin_result() -> Dictionary:
 		"coin_reset": false
 	}
 	
-	# Special first spin logic
+	# Special first spin logic - make it likely to fail but not guaranteed
 	if is_first_spin:
 		is_first_spin = false
 		var first_chance = randf()
 		
-		if first_chance <= 0.0001:  # 0.01% chance for million dollars
+		if first_chance <= 0.0001:  # 0.01% chance for million dollars (keep this rare)
 			result.debt_reduction = 1000000
 			result.type = "jackpot"
 			return result
+		elif first_chance <= 0.05:  # 5% chance for small win on first spin
+			var coins_won = randi_range(5, 15)
+			result.coins_won = coins_won
+			result.type = "coin_win"
+			return result
 		else:
+			# 95% chance to lose first spin (but not predetermined symbols)
 			result.type = "loss"
 			return result
 	
