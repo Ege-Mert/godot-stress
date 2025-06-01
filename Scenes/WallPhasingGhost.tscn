@@ -1,33 +1,21 @@
-[gd_scene load_steps=3 format=3 uid="uid://deqo6p5e3acly"]
+[gd_scene load_steps=4 format=3 uid="uid://deqo6p5e3acly"]
 
 [ext_resource type="Script" uid="uid://cmchhibw371r0" path="res://Scripts/WallPhasingGhost.gd" id="1_wall_ghost"]
+[ext_resource type="Texture2D" uid="uid://bgy2gk4ibu77f" path="res://Sprites/pacman-characters_0000_Layer-9.png" id="2_anfmd"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_wall_ghost"]
-radius = 15.0
+radius = 117.017
 
 [node name="WallPhasingGhost" type="CharacterBody2D"]
+scale = Vector2(0.25, 0.25)
 script = ExtResource("1_wall_ghost")
+trail_scale_multiplier = 0.295
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
-modulate = Color(0.5, 0, 1, 0.7)
-scale = Vector2(1.2, 1.2)
+texture = ExtResource("2_anfmd")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("CircleShape2D_wall_ghost")
-
-[node name="Label" type="Label" parent="."]
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -20.0
-offset_top = -15.0
-offset_right = 20.0
-offset_bottom = 15.0
-text = "💀"
-horizontal_alignment = 1
-vertical_alignment = 1
 
 [node name="DetectionArea" type="Area2D" parent="."]
 

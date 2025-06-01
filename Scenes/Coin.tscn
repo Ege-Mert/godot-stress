@@ -1,19 +1,22 @@
 [gd_scene load_steps=4 format=3 uid="uid://cm0p1gkpepcso"]
 
 [ext_resource type="Script" uid="uid://cxquwo2jrgsxy" path="res://Scripts/Coin.gd" id="1_qrc3l"]
-[ext_resource type="Texture2D" uid="uid://dedn47ecsgf04" path="res://icon.svg" id="2_somhs"]
+[ext_resource type="Texture2D" uid="uid://jaf7ua25rhja" path="res://Sprites/coin.png" id="2_somhs"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_8a2u1"]
+radius = 191.741
 
 [node name="Coin" type="Area2D"]
+scale = Vector2(0.15, 0.15)
 script = ExtResource("1_qrc3l")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 modulate = Color(0.762824, 0.760794, 3.85046e-07, 1)
+scale = Vector2(0.6, 0.6)
 texture = ExtResource("2_somhs")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-position = Vector2(-1, 0)
+position = Vector2(15, -12)
 shape = SubResource("CircleShape2D_8a2u1")
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="."]

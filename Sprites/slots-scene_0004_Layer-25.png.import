@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b0al7t26axc1p"
-path="res://.godot/imported/lemon.png-73e08c0ca3977d3d7574347d6beaf193.ctex"
+uid="uid://ce327ed4dltkw"
+path="res://.godot/imported/slots-scene_0004_Layer-25.png-0715e24018df66bf4d62dd47cda011cf.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Sprites/lemon.png"
-dest_files=["res://.godot/imported/lemon.png-73e08c0ca3977d3d7574347d6beaf193.ctex"]
+source_file="res://Sprites/slots-scene_0004_Layer-25.png"
+dest_files=["res://.godot/imported/slots-scene_0004_Layer-25.png-0715e24018df66bf4d62dd47cda011cf.ctex"]
 
 [params]
 

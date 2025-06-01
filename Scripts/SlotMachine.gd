@@ -1,8 +1,13 @@
 extends Control
 class_name SlotMachineController
 
+@export_group("Configuration")
 @export var config: SlotMachineConfig
 @export var enable_debug_mode: bool = false
+
+@export_group("Tutorial Settings")
+@export var force_first_spin_loss: bool = true
+@export var first_spin_symbols: Array[int] = [0, 1, 2]
 
 signal spin_started
 signal spin_completed(result: Dictionary)
@@ -35,12 +40,11 @@ func create_basic_symbols():
 	if not config:
 		return
 	
-	# Create basic fallback symbols
 	config.symbols.clear()
 	
-	var symbol_names = ["Seven", "Diamond", "Bell", "Cherry", "Star", "Lemon", "Orange"]
+	var symbol_names = ["Seven", "Diamond", "Bell", "Cherry", "Carrot", "Watermelon", "Strawberry"]
 	var payout_types = ["Jackpot", "Money", "Money", "Money", "Coins", "Coins", "Coins"]
-	var payouts = [1000000, 300, 150, 75, 50, 25, 10]
+	var payouts = [1000000, 50000, 25000, 10000, 50, 25, 10]
 	
 	for i in range(symbol_names.size()):
 		var symbol = SymbolData.new()
@@ -65,7 +69,6 @@ func setup_components():
 	if not audio_manager:
 		push_error("SlotMachineAudio component not found!")
 	
-	# Pass config to components
 	if reel_manager:
 		reel_manager.setup_with_config(config)
 	if ui_manager:
@@ -111,11 +114,6 @@ func perform_spin():
 	is_spinning = true
 	spin_started.emit()
 	
-	# Calculate spin result first
-	var target_symbols = determine_target_symbols()
-	current_spin_result = calculate_spin_result(target_symbols)
-	
-	# Deduct spin cost
 	if not GameManager.deduct_spin_cost():
 		is_spinning = false
 		return
@@ -126,99 +124,9 @@ func perform_spin():
 	if audio_manager:
 		audio_manager.play_spin_sound()
 	
+	# Start the reels spinning - result will be determined by where they stop
 	if reel_manager:
-		reel_manager.start_spin_animation(target_symbols)
-
-func determine_target_symbols() -> Array[int]:
-	var symbols: Array[int] = [0, 0, 0]
-	var symbol_count = config.get_symbol_count()
-	
-	if symbol_count == 0:
-		push_error("No symbols configured!")
-		return symbols
-	
-	var win_chance = randf()
-	
-	# Check for jackpot first
-	if win_chance < config.jackpot_chance:
-		# Jackpot - all sevens (index 0)
-		symbols = [0, 0, 0]
-		if enable_debug_mode:
-			print("Generated jackpot: ", symbols)
-		return symbols
-	
-	# Check for regular win
-	if win_chance < config.base_win_chance:
-		var win_type = randf()
-		var symbol_index = randi() % symbol_count
-		
-		if win_type < 0.3:  # 30% chance for 3 matching
-			symbols = [symbol_index, symbol_index, symbol_index]
-		else:  # 70% chance for 2 matching
-			symbols = [symbol_index, symbol_index, randi() % symbol_count]
-			# Ensure third symbol is different
-			while symbols[2] == symbol_index and symbol_count > 1:
-				symbols[2] = randi() % symbol_count
-	else:
-		# Loss - all different symbols
-		symbols[0] = randi() % symbol_count
-		if symbol_count > 1:
-			symbols[1] = (symbols[0] + 1 + randi() % (symbol_count - 1)) % symbol_count
-		if symbol_count > 2:
-			symbols[2] = (symbols[1] + 1 + randi() % (symbol_count - 1)) % symbol_count
-	
-	if enable_debug_mode:
-		print("Generated symbols: ", symbols)
-	
-	return symbols
-
-func calculate_spin_result(symbols: Array[int]) -> Dictionary:
-	var result = {
-		"symbols": symbols,
-		"coins_won": 0,
-		"debt_reduction": 0,
-		"type": "loss",
-		"match_count": 0,
-		"winning_symbol": -1
-	}
-	
-	# Count matches
-	var symbol_counts = {}
-	for symbol in symbols:
-		symbol_counts[symbol] = symbol_counts.get(symbol, 0) + 1
-	
-	# Find best match
-	var max_count = 0
-	var winning_symbol = -1
-	for symbol in symbol_counts.keys():
-		if symbol_counts[symbol] > max_count:
-			max_count = symbol_counts[symbol]
-			winning_symbol = symbol
-	
-	if max_count < 2:
-		return result  # No win
-	
-	result.match_count = max_count
-	result.winning_symbol = winning_symbol
-	
-	var symbol_data = config.get_symbol_by_index(winning_symbol)
-	if not symbol_data:
-		return result
-	
-	var payout = symbol_data.get_payout_for_matches(max_count)
-	
-	match symbol_data.payout_type:
-		"Jackpot":
-			result.debt_reduction = GameManager.total_debt  # Clear all debt
-			result.type = "jackpot"
-		"Money":
-			result.debt_reduction = payout
-			result.type = "debt_win"
-		"Coins":
-			result.coins_won = payout
-			result.type = "coin_win"
-	
-	return result
+		reel_manager.start_spin()
 
 func _on_individual_reel_stopped(reel_index: int):
 	if config.enable_screen_shake:
@@ -230,7 +138,29 @@ func _on_individual_reel_stopped(reel_index: int):
 func _on_reel_animation_completed():
 	is_spinning = false
 	
-	# Apply game results
+	# Get the actual symbols from where the reels stopped
+	var final_symbols = reel_manager.get_final_symbols()
+	
+	# DEBUG: Print what symbols were detected
+	print("DEBUG: Final symbols detected: ", final_symbols)
+	for i in range(final_symbols.size()):
+		if i < config.symbols.size():
+			print("  Reel ", i, ": Symbol ", final_symbols[i], " (", config.symbols[final_symbols[i]].symbol_name, ")")
+	
+	# TEMPORARY FIX: Force disable tutorial override
+	if force_first_spin_loss and GameManager.is_first_spin and not GameManager.first_spin_completed:
+		print("DEBUG: Tutorial should override, but forcing completion")
+		GameManager.first_spin_completed = true
+		GameManager.is_first_spin = false
+		# Don't override - use actual symbols
+		# final_symbols = first_spin_symbols
+	
+	# Calculate result based on actual reel positions
+	current_spin_result = calculate_result_from_symbols(final_symbols)
+	
+	print("DEBUG: Calculated result: ", current_spin_result)
+	
+	# Apply results to GameManager
 	if current_spin_result.coins_won > 0:
 		GameManager.current_coins += current_spin_result.coins_won
 		GameManager.coins_changed.emit(GameManager.current_coins)
@@ -257,6 +187,91 @@ func _on_reel_animation_completed():
 	if not GameManager.can_spin():
 		call_deferred("trigger_evil_laugh")
 
+func calculate_result_from_symbols(symbols: Array[int]) -> Dictionary:
+	var result = {
+		"symbols": symbols,
+		"coins_won": 0,
+		"debt_reduction": 0,
+		"type": "loss",
+		"match_count": 0,
+		"winning_symbol": -1,
+		"winning_positions": []  # Add this for highlighting
+	}
+	
+	if enable_debug_mode:
+		print("=== SPIN RESULT DEBUG ===")
+		print("Symbols landed: ", symbols)
+		for i in range(symbols.size()):
+			var symbol_data = config.get_symbol_by_index(symbols[i])
+			if symbol_data:
+				print("Reel ", i + 1, ": ", symbol_data.symbol_name, " (index: ", symbols[i], ")")
+	
+	# Count exact matches
+	var symbol_counts = {}
+	for i in range(symbols.size()):
+		var symbol = symbols[i]
+		if not symbol_counts.has(symbol):
+			symbol_counts[symbol] = []
+		symbol_counts[symbol].append(i)
+	
+	# Find the highest match count
+	var max_count = 0
+	var winning_symbol = -1
+	var winning_positions = []
+	
+	for symbol in symbol_counts.keys():
+		var positions = symbol_counts[symbol]
+		if positions.size() > max_count:
+			max_count = positions.size()
+			winning_symbol = symbol
+			winning_positions = positions
+	
+	result.match_count = max_count
+	result.winning_symbol = winning_symbol
+	result.winning_positions = winning_positions
+	
+	if enable_debug_mode:
+		print("Match count: ", max_count)
+		if max_count >= 2:
+			var symbol_data = config.get_symbol_by_index(winning_symbol)
+			if symbol_data:
+				print("Winning symbol: ", symbol_data.symbol_name)
+				print("Winning positions: ", winning_positions)
+	
+	# Only award payouts for 2+ matches (and 3 for jackpot)
+	if max_count >= 2:
+		var symbol_data = config.get_symbol_by_index(winning_symbol)
+		if symbol_data:
+			var payout = symbol_data.get_payout_for_matches(max_count)
+			
+			if enable_debug_mode:
+				print("Base payout: ", symbol_data.base_payout_amount)
+				print("Final payout: ", payout)
+			
+			match symbol_data.payout_type:
+				"Jackpot":
+					if max_count == 3:
+						result.debt_reduction = GameManager.total_debt
+						result.type = "jackpot"
+						if enable_debug_mode:
+							print("JACKPOT! Debt cleared!")
+				"Money":
+					result.debt_reduction = payout
+					result.type = "debt_win"
+					if enable_debug_mode:
+						print("Money win: $", payout)
+				"Coins":
+					result.coins_won = payout
+					result.type = "coin_win"
+					if enable_debug_mode:
+						print("Coin win: ", payout, " coins")
+	
+	if enable_debug_mode:
+		print("Final result type: ", result.type)
+		print("========================")
+	
+	return result
+
 func create_reel_stop_shake():
 	if not config.enable_screen_shake:
 		return
@@ -281,9 +296,9 @@ func create_win_shake(result: Dictionary):
 		"jackpot":
 			intensity = config.shake_jackpot
 		"debt_win":
-			intensity = config.shake_big_win if result.debt_reduction > 100 else config.shake_medium_win
+			intensity = config.shake_big_win if result.debt_reduction > 20000 else config.shake_medium_win
 		"coin_win":
-			intensity = config.shake_medium_win if result.coins_won > 20 else config.shake_small_win
+			intensity = config.shake_medium_win if result.coins_won > 30 else config.shake_small_win
 	
 	var shake_tween = create_tween()
 	var original_position = position
@@ -311,7 +326,7 @@ func trigger_evil_laugh():
 		audio_manager.play_evil_laugh()
 	
 	if config.enable_screen_shake:
-		create_win_shake({"type": "jackpot"})  # Use jackpot shake for evil laugh
+		create_win_shake({"type": "jackpot"})
 	
 	if ui_manager:
 		ui_manager.show_evil_message()
