@@ -60,6 +60,14 @@ func get_spin_cost() -> int:
 	var reduction = slot_upgrades.reduced_cost
 	return max(1, base_cost - reduction)
 
+func deduct_spin_cost() -> bool:
+	var spin_cost = get_spin_cost()
+	if current_coins >= spin_cost:
+		current_coins -= spin_cost
+		coins_changed.emit(current_coins)
+		return true
+	return false
+
 func perform_spin() -> Dictionary:
 	var spin_cost = get_spin_cost()
 	if not can_spin():

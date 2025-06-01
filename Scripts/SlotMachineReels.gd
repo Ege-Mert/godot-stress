@@ -1,220 +1,295 @@
 extends Control
 class_name SlotMachineReels
 
-@export_group("Reel Symbols")
-@export var reel_symbols: Array[String] = [
-	"res://Sprites/cherry.png",
-	"res://Sprites/lemon.png", 
-	"res://Sprites/orange.png",
-	"res://Sprites/bell.png",
-	"res://Sprites/star.png",
-	"res://Sprites/diamond.png",
-	"res://Sprites/seven.png"
-]
-@export var reel_symbol_names: Array[String] = ["Cherry", "Lemon", "Orange", "Bell", "Star", "Diamond", "Seven"]
-
-@export_group("Animation Settings")
-@export var kick_up_distance: float = 20.0
-@export var kick_up_duration: float = 0.2
-@export var base_spin_duration: float = 2.5
-@export var spin_stagger_delay: float = 0.6
-@export var total_rotations: float = 4.0
-@export var ease_out_strength: float = 2.0
-
-@export_group("Visual Effects")
-@export var enable_wobble: bool = true
-@export var wobble_intensity: float = 10.0
-@export var use_textures: bool = true
-@export var fallback_font_size: int = 24
-
 signal animation_completed
+signal reel_stopped(reel_index: int)
 
 @onready var reel1 = $Reels/Reel1
 @onready var reel2 = $Reels/Reel2
 @onready var reel3 = $Reels/Reel3
 
-var loaded_textures: Array[Texture2D] = []
+var config: SlotMachineConfig
 var final_symbols: Array[int] = [0, 0, 0]
-var spin_tweens: Array[Tween] = []
-var controller: SlotMachineController
+var reel_containers: Array[Control] = []
+var spinning_symbols: Array[Array] = [[], [], []]
+var animation_tweens: Array[Tween] = []
+var reels_stopped_count: int = 0
+
+func setup_with_config(slot_config: SlotMachineConfig):
+	config = slot_config
+	if not config:
+		push_error("SlotMachineReels: No config provided!")
 
 func _ready():
-	controller = get_parent() as SlotMachineController
-	preload_symbol_textures()
+	setup_reel_containers()
 
-func preload_symbol_textures():
-	loaded_textures.clear()
+func setup_reel_containers():
+	reel_containers = [reel1, reel2, reel3]
 	
-	for i in range(reel_symbols.size()):
-		var symbol_path = reel_symbols[i]
-		var texture: Texture2D = null
-		
-		if ResourceLoader.exists(symbol_path):
-			texture = load(symbol_path) as Texture2D
-		
-		if texture:
-			loaded_textures.append(texture)
-		else:
-			loaded_textures.append(null)
-			push_warning("Failed to load texture: " + symbol_path)
+	for i in range(reel_containers.size()):
+		if reel_containers[i]:
+			reel_containers[i].clip_contents = true
 
 func initialize_reels():
-	var reels = [reel1, reel2, reel3]
+	if not config or config.get_symbol_count() == 0:
+		push_error("Cannot initialize reels: no valid config or symbols")
+		return
 	
-	for i in range(reels.size()):
-		if reels[i]:
-			var random_symbol = randi() % reel_symbols.size()
+	for i in range(reel_containers.size()):
+		if reel_containers[i]:
+			var random_symbol = randi() % config.get_symbol_count()
 			final_symbols[i] = random_symbol
-			display_symbol_on_reel(reels[i], random_symbol)
+			create_static_symbol(reel_containers[i], random_symbol)
 
 func start_spin_animation(symbols: Array[int]):
+	if not config:
+		push_error("Cannot start animation: no config")
+		return
+	
 	final_symbols = symbols
-	clear_spin_tweens()
-	start_kickup_animation()
-
-func start_kickup_animation():
-	var reels = [reel1, reel2, reel3]
+	reels_stopped_count = 0
+	clear_animation_tweens()
 	
-	for i in range(reels.size()):
-		if not reels[i]:
-			continue
-		
-		var reel = reels[i]
-		
-		if reel.get_child_count() > 0:
-			var symbol_node = reel.get_child(0)
-			var kickup_tween = create_tween()
-			spin_tweens.append(kickup_tween)
-			
-			var original_pos = Vector2.ZERO
-			var kick_target = Vector2(0, -kick_up_distance)
-			
-			kickup_tween.tween_property(symbol_node, "position", kick_target, kick_up_duration)
-			kickup_tween.tween_callback(func(): start_individual_reel_spin(i))
+	# Start the 3-phase animation for each reel
+	for i in range(reel_containers.size()):
+		start_reel_sequence(i)
 
-func start_individual_reel_spin(reel_index: int):
-	var reels = [reel1, reel2, reel3]
-	if reel_index >= reels.size() or not reels[reel_index]:
+func start_reel_sequence(reel_index: int):
+	if reel_index >= reel_containers.size() or not reel_containers[reel_index]:
 		return
 	
-	var reel = reels[reel_index]
-	var final_symbol = final_symbols[reel_index]
+	var reel = reel_containers[reel_index]
 	
-	var spin_tween = create_tween()
-	spin_tweens.append(spin_tween)
-	
-	var spin_duration = base_spin_duration + (reel_index * spin_stagger_delay)
-	
-	spin_tween.tween_method(
-		func(progress): animate_symbol_spin(reel, progress, final_symbol),
-		0.0,
-		1.0,
-		spin_duration
-	).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUART)
-	
-	if reel_index == reels.size() - 1:
-		spin_tween.tween_callback(complete_spin)
+	# Phase 1: Rise up
+	start_rise_phase(reel, reel_index)
 
-func animate_symbol_spin(reel: Control, progress: float, final_symbol: int):
-	if not reel:
-		return
-	
-	var total_angle = progress * 360.0 * total_rotations
-	var symbol_count = reel_symbols.size()
-	var current_symbol_index = int(total_angle / (360.0 / symbol_count)) % symbol_count
-	
-	if progress > 0.8:
-		current_symbol_index = final_symbol
-	
+func start_rise_phase(reel: Control, reel_index: int):
 	clear_reel_children(reel)
 	
-	var symbol_y_pos = lerp(-kick_up_distance, 0.0, progress)
+	# Create symbol for rising animation
+	var symbol_node = create_spinning_symbol(reel, final_symbols[reel_index])
+	symbol_node.position.y = 0
 	
-	if use_textures and current_symbol_index < loaded_textures.size() and loaded_textures[current_symbol_index]:
-		create_texture_symbol(reel, current_symbol_index, symbol_y_pos, progress, total_angle)
-	else:
-		create_text_symbol(reel, current_symbol_index, symbol_y_pos, progress, total_angle)
+	var rise_tween = create_tween()
+	animation_tweens.append(rise_tween)
+	
+	rise_tween.tween_property(
+		symbol_node, 
+		"position:y", 
+		-config.rise_distance, 
+		config.rise_duration
+	).set_ease(config.rise_ease_type)
+	
+	rise_tween.tween_callback(func(): start_fall_phase(reel, reel_index))
 
-func create_texture_symbol(reel: Control, symbol_index: int, y_pos: float, progress: float, angle: float):
+func start_fall_phase(reel: Control, reel_index: int):
+	var symbol_node = get_reel_symbol_node(reel)
+	if not symbol_node:
+		return
+	
+	var fall_duration = config.rise_duration / config.fall_speed_multiplier
+	var fall_tween = create_tween()
+	animation_tweens.append(fall_tween)
+	
+	fall_tween.tween_property(
+		symbol_node,
+		"position:y",
+		0,
+		fall_duration
+	).set_ease(config.fall_ease_type)
+	
+	fall_tween.tween_callback(func(): start_spin_phase(reel, reel_index))
+
+func start_spin_phase(reel: Control, reel_index: int):
+	# Clear the reel and setup spinning symbols
+	clear_reel_children(reel)
+	setup_spinning_symbols(reel, reel_index)
+	
+	# Calculate total spin time including stagger
+	var total_spin_time = config.base_spin_duration + (reel_index * config.reel_stop_delay)
+	
+	# Start spinning animation
+	var spin_tween = create_tween()
+	animation_tweens.append(spin_tween)
+	
+	spin_tween.tween_method(
+		func(progress): update_spinning_reel(reel, reel_index, progress),
+		0.0,
+		1.0,
+		total_spin_time
+	).set_ease(config.deceleration_ease)
+	
+	spin_tween.tween_callback(func(): stop_reel(reel, reel_index))
+
+func setup_spinning_symbols(reel: Control, reel_index: int):
+	spinning_symbols[reel_index].clear()
+	
+	# Create multiple symbols for smooth spinning effect
+	var symbols_in_view = 5  # Number of symbols visible during spin
+	var symbol_height = reel.size.y / 3  # Assume 3 symbols fit in view
+	
+	for i in range(symbols_in_view * 2):  # Extra symbols for smooth loop
+		var symbol_index = randi() % config.get_symbol_count()
+		var symbol_node = create_spinning_symbol(reel, symbol_index)
+		symbol_node.position.y = i * symbol_height - symbol_height
+		spinning_symbols[reel_index].append(symbol_node)
+
+func update_spinning_reel(reel: Control, reel_index: int, progress: float):
+	if spinning_symbols[reel_index].is_empty():
+		return
+	
+	# Calculate spin speed with deceleration
+	var current_speed = config.spin_speed_rps
+	if progress > 0.7:  # Start slowing down in last 30%
+		var decel_progress = (progress - 0.7) / 0.3
+		current_speed = lerp(config.spin_speed_rps, 0.1, decel_progress)
+	
+	# Move symbols downward to create spinning effect
+	var symbol_height = reel.size.y / 3
+	var delta = 0.016  # Assume 60 FPS for consistent animation
+	var movement = current_speed * symbol_height * delta
+	
+	for symbol_node in spinning_symbols[reel_index]:
+		if symbol_node and is_instance_valid(symbol_node):
+			symbol_node.position.y += movement
+			
+			# Loop symbol back to top when it goes off screen
+			if symbol_node.position.y > reel.size.y + symbol_height:
+				symbol_node.position.y -= (spinning_symbols[reel_index].size() * symbol_height)
+
+func stop_reel(reel: Control, reel_index: int):
+	# Clear spinning symbols and show final result
+	clear_reel_children(reel)
+	
+	# Create final symbol with settle animation
+	var final_symbol = create_spinning_symbol(reel, final_symbols[reel_index])
+	final_symbol.position.y = -10  # Start slightly above
+	
+	var settle_tween = create_tween()
+	animation_tweens.append(settle_tween)
+	
+	settle_tween.tween_property(
+		final_symbol,
+		"position:y",
+		0,
+		config.final_settle_duration
+	).set_ease(Tween.EASE_OUT)
+	
+	# Emit reel stopped signal
+	reel_stopped.emit(reel_index)
+	
+	reels_stopped_count += 1
+	if reels_stopped_count >= reel_containers.size():
+		animation_completed.emit()
+
+func create_spinning_symbol(reel: Control, symbol_index: int) -> Control:
+	var symbol_data = config.get_symbol_by_index(symbol_index)
+	if not symbol_data:
+		return create_fallback_symbol(reel, symbol_index)
+	
+	if symbol_data.symbol_texture:
+		return create_texture_symbol(reel, symbol_data)
+	else:
+		return create_text_symbol(reel, symbol_data)
+
+func create_texture_symbol(reel: Control, symbol_data: SymbolData) -> TextureRect:
 	var texture_rect = TextureRect.new()
-	texture_rect.texture = loaded_textures[symbol_index]
+	texture_rect.texture = symbol_data.symbol_texture
 	texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	texture_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-	texture_rect.position = Vector2(0, y_pos)
 	texture_rect.size = reel.size
-	
-	if enable_wobble and progress < 0.8:
-		var wobble_amount = (1.0 - progress) * wobble_intensity
-		texture_rect.rotation = deg_to_rad(sin(angle * 0.1) * wobble_amount)
-	
+	texture_rect.position = Vector2.ZERO
 	reel.add_child(texture_rect)
+	return texture_rect
 
-func create_text_symbol(reel: Control, symbol_index: int, y_pos: float, progress: float, angle: float):
+func create_text_symbol(reel: Control, symbol_data: SymbolData) -> Label:
 	var label = Label.new()
-	
-	if symbol_index < reel_symbol_names.size():
-		label.text = reel_symbol_names[symbol_index]
-	else:
-		label.text = "?"
-	
-	label.add_theme_font_size_override("font_size", fallback_font_size)
+	label.text = symbol_data.symbol_name
+	label.add_theme_font_size_override("font_size", 24)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.position = Vector2(0, y_pos)
 	label.size = reel.size
-	
-	if enable_wobble and progress < 0.8:
-		var wobble_amount = (1.0 - progress) * wobble_intensity
-		label.rotation = deg_to_rad(sin(angle * 0.1) * wobble_amount)
-	
+	label.position = Vector2.ZERO
 	reel.add_child(label)
+	return label
+
+func create_fallback_symbol(reel: Control, symbol_index: int) -> Label:
+	var label = Label.new()
+	label.text = "?" + str(symbol_index)
+	label.add_theme_font_size_override("font_size", 24)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.size = reel.size
+	label.position = Vector2.ZERO
+	reel.add_child(label)
+	return label
+
+func create_static_symbol(reel: Control, symbol_index: int):
+	clear_reel_children(reel)
+	create_spinning_symbol(reel, symbol_index)
+
+func highlight_winning_symbols(result: Dictionary):
+	if not config.show_win_highlights or result.winning_symbol == -1:
+		return
+	
+	var winning_symbol_data = config.get_symbol_by_index(result.winning_symbol)
+	if not winning_symbol_data:
+		return
+	
+	# Highlight matching symbols
+	for i in range(reel_containers.size()):
+		if final_symbols[i] == result.winning_symbol:
+			highlight_reel(i, winning_symbol_data.highlight_color)
+
+func highlight_reel(reel_index: int, color: Color):
+	if reel_index >= reel_containers.size():
+		return
+	
+	var reel = reel_containers[reel_index]
+	var symbol_node = get_reel_symbol_node(reel)
+	
+	if not symbol_node:
+		return
+	
+	# Create highlight effect
+	var original_modulate = symbol_node.modulate
+	var original_scale = symbol_node.scale
+	
+	var highlight_tween = create_tween()
+	highlight_tween.set_parallel(true)
+	
+	# Color highlight
+	highlight_tween.tween_property(symbol_node, "modulate", color, 0.2)
+	highlight_tween.tween_property(symbol_node, "modulate", original_modulate, 0.2).set_delay(0.2)
+	
+	# Scale effect
+	highlight_tween.tween_property(symbol_node, "scale", original_scale * config.symbol_scale_on_win, 0.2)
+	highlight_tween.tween_property(symbol_node, "scale", original_scale, 0.2).set_delay(0.2)
+	
+	# Repeat a few times
+	for i in range(3):
+		var delay = (i + 1) * 0.5
+		highlight_tween.tween_property(symbol_node, "modulate", color, 0.2).set_delay(delay)
+		highlight_tween.tween_property(symbol_node, "modulate", original_modulate, 0.2).set_delay(delay + 0.2)
+
+func get_reel_symbol_node(reel: Control) -> Control:
+	if reel.get_child_count() > 0:
+		return reel.get_child(0)
+	return null
 
 func clear_reel_children(reel: Control):
 	for child in reel.get_children():
 		child.queue_free()
 
-func display_symbol_on_reel(reel_control: Control, symbol_index: int):
-	if not reel_control:
-		return
-	
-	clear_reel_children(reel_control)
-	await get_tree().process_frame
-	
-	if use_textures and symbol_index < loaded_textures.size() and loaded_textures[symbol_index]:
-		var texture_rect = TextureRect.new()
-		texture_rect.texture = loaded_textures[symbol_index]
-		texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		texture_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		texture_rect.position = Vector2.ZERO
-		texture_rect.size = reel_control.size
-		reel_control.add_child(texture_rect)
-	else:
-		var label = Label.new()
-		if symbol_index < reel_symbol_names.size():
-			label.text = reel_symbol_names[symbol_index]
-		else:
-			label.text = "?"
-		
-		label.add_theme_font_size_override("font_size", fallback_font_size)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.position = Vector2.ZERO
-		label.size = reel_control.size
-		reel_control.add_child(label)
-
-func complete_spin():
-	var reels = [reel1, reel2, reel3]
-	for i in range(reels.size()):
-		if reels[i]:
-			display_symbol_on_reel(reels[i], final_symbols[i])
-	
-	animation_completed.emit()
-
-func clear_spin_tweens():
-	for tween in spin_tweens:
+func clear_animation_tweens():
+	for tween in animation_tweens:
 		if tween and tween.is_valid():
 			tween.kill()
-	spin_tweens.clear()
+	animation_tweens.clear()
+	
+	# Clear spinning symbols arrays
+	for i in range(spinning_symbols.size()):
+		spinning_symbols[i].clear()
 
 func _exit_tree():
-	clear_spin_tweens()
+	clear_animation_tweens()
