@@ -27,13 +27,19 @@ var path_index: int = 0
 func _ready():
 	# Set up sprite appearance
 	if sprite:
-		sprite.modulate = Color.RED
-		# Create simple ghost shape if no sprite
-		var texture = ImageTexture.new()
-		var image = Image.create(24, 24, false, Image.FORMAT_RGB8)
-		image.fill(Color.RED)
-		texture.set_image(image)
-		sprite.texture = texture
+		# Only create programmatic texture if no sprite asset is loaded
+		if not sprite.texture:
+			sprite.modulate = Color.RED
+			# Create simple ghost shape as fallback
+			var texture = ImageTexture.new()
+			var image = Image.create(24, 24, false, Image.FORMAT_RGB8)
+			image.fill(Color.RED)
+			texture.set_image(image)
+			sprite.texture = texture
+		else:
+			# Scale actual sprite assets to appropriate size
+			sprite.scale = Vector2(2.0, 2.0)  # Adjust this value as needed
+			sprite.modulate = Color.RED
 	
 	# Detection will be connected after setup
 	

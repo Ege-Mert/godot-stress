@@ -2,29 +2,22 @@ extends Resource
 class_name SlotMachineConfig
 
 @export_group("Game Balance")
-@export var base_win_chance: float = 0.3
-@export var jackpot_chance: float = 0.001
 @export var spin_cost: int = 5
 @export var minimum_bet: int = 1
 
-@export_group("Reel Animation - Phase 1: Rise")
-@export var rise_distance: float = 30.0
-@export var rise_duration: float = 0.3
-@export var rise_ease_type: Tween.EaseType = Tween.EASE_OUT
+@export_group("Physics Settings")
+@export var initial_velocity_min: float = 15.0
+@export var initial_velocity_max: float = 25.0
+@export var friction: float = 3.0
+@export var stop_threshold: float = 0.1
+@export var snap_to_symbol: bool = true
+@export var snap_duration: float = 0.2
 
-@export_group("Reel Animation - Phase 2: Fall")
-@export var fall_speed_multiplier: float = 2.0
-@export var fall_ease_type: Tween.EaseType = Tween.EASE_IN
-
-@export_group("Reel Animation - Phase 3: Spin")
-@export var base_spin_duration: float = 2.0
-@export var spin_speed_rps: float = 8.0
-@export var deceleration_duration: float = 1.0
-@export var deceleration_ease: Tween.EaseType = Tween.EASE_OUT
-
-@export_group("Sequential Stopping")
-@export var reel_stop_delay: float = 0.5
-@export var final_settle_duration: float = 0.2
+@export_group("Reel Settings")
+@export var symbol_height: float = 120.0  # Increase from 80.0 to 120.0 or higher
+@export var visible_symbols_per_reel: int = 1
+@export var spin_delay_between_reels: float = 0.15
+@export var auto_stop_after: float = 5.0
 
 @export_group("Screen Shake Effects")
 @export var enable_screen_shake: bool = true
@@ -49,6 +42,11 @@ class_name SlotMachineConfig
 
 @export_group("Symbol Configuration")
 @export var symbols: Array[SymbolData] = []
+
+@export_group("Debug Settings")
+@export var enable_detailed_logging: bool = false
+@export var show_symbol_indices: bool = false
+@export var highlight_all_matches: bool = true
 
 func get_symbol_by_index(index: int) -> SymbolData:
 	if index >= 0 and index < symbols.size():

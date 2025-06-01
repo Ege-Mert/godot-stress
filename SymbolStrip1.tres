@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="SlotMachineSymbolStrip" load_steps=2 format=3 uid="uid://mfyv3eyur5ig"]
+
+[ext_resource type="Script" uid="uid://c3u3gq266m661" path="res://Scripts/SlotMachineSymbolStrip.gd" id="1_strip"]
+
+[resource]
+script = ExtResource("1_strip")
+strip_pattern = Array[int]([6, 5, 4, 3, 5, 6, 4, 2, 4, 5, 6, 4, 5, 1, 5, 4, 6, 5, 4, 3, 6, 4, 5, 6, 4, 0, 4, 5, 6, 4, 5, 6, 2, 5, 4, 6, 5, 4, 1, 4, 6, 5, 4, 6, 3, 5, 4, 6, 5, 4, 6])
+strip_name = "Balanced Reel 1"

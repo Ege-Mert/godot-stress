@@ -18,13 +18,19 @@ func _ready():
 	
 	# Set up sprite (you can replace this with actual coin sprite)
 	if sprite:
-		sprite.modulate = Color.YELLOW
-		# Create a simple circular coin shape if no sprite asset
-		var texture = ImageTexture.new()
-		var image = Image.create(16, 16, false, Image.FORMAT_RGB8)
-		image.fill(Color.YELLOW)
-		texture.set_image(image)
-		sprite.texture = texture
+		# Only create programmatic texture if no sprite asset is loaded
+		if not sprite.texture:
+			sprite.modulate = Color.YELLOW
+			# Create a simple circular coin shape as fallback
+			var texture = ImageTexture.new()
+			var image = Image.create(16, 16, false, Image.FORMAT_RGB8)
+			image.fill(Color.YELLOW)
+			texture.set_image(image)
+			sprite.texture = texture
+		else:
+			# Scale actual sprite assets to appropriate size
+			sprite.scale = Vector2(1.5, 1.5)  # Adjust this value as needed
+			sprite.modulate = Color.YELLOW
 
 func _on_body_entered(body):
 	if body.is_in_group("player") and not is_collected:
