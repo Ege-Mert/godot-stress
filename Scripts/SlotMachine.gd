@@ -1,602 +1,221 @@
 extends Control
+class_name SlotMachineController
 
-# Inspector customizable animation settings
-@export_group("Animation Settings")
-@export var kick_up_distance: float = 20.0  # How far symbols move up before spinning
-@export var kick_up_duration: float = 0.2   # Duration of the upward kick
-@export var base_spin_duration: float = 2.5  # Base spinning duration
-@export var spin_stagger_delay: float = 0.6  # Delay between each reel stopping
-@export var total_rotations: float = 4.0     # How many full rotations during spin
-@export var ease_out_strength: float = 2.0   # How strong the ease-out effect is
+@export_group("Game Balance")
+@export var first_spin_win_chance: float = 0.05
+@export var normal_win_chance: float = 0.3
+@export var jackpot_chance: float = 0.0001
+@export var coin_win_ratio: float = 0.6
 
-@export_group("Handle Settings")
-@export var handle_pull_threshold: float = 60.0  # How far to pull handle
-@export var handle_return_speed: float = 0.4     # Speed of handle return animation
+@export_group("Payout Settings")
+@export var min_coin_win: int = 10
+@export var max_coin_win: int = 30
+@export var min_debt_reduction: int = 50
+@export var max_debt_reduction: int = 200
+@export var jackpot_debt_clear: int = 1000000
 
-# UI References
-@onready var debt_label = $UI/TopPanel/DebtLabel
-@onready var coins_label = $UI/TopPanel/CoinsLabel
-@onready var spin_button = $UI/BottomPanel/SpinButton
-@onready var upgrade_button = $UI/BottomPanel/UpgradeButton
+@export_group("Audio Settings")
+@export var enable_audio: bool = true
+@export var audio_volume: float = 1.0
 
-# Slot machine elements
-@onready var handle = $SlotMachine/Handle
-@onready var reel1 = $SlotMachine/Reels/Reel1
-@onready var reel2 = $SlotMachine/Reels/Reel2
-@onready var reel3 = $SlotMachine/Reels/Reel3
-@onready var result_label = $UI/CenterPanel/ResultLabel
+@export_group("Visual Effects")
+@export var enable_screen_shake: bool = true
+@export var shake_intensity: float = 3.0
+@export var result_display_duration: float = 3.0
 
-# Handle mechanics - Fixed dragging system
-var handle_original_pos: Vector2
-var is_handle_dragging: bool = false
-var handle_pulled: bool = false
-var drag_start_pos: Vector2
-var handle_tween: Tween
+signal spin_started
+signal spin_completed(result: Dictionary)
+signal evil_laugh_triggered
 
-# Reel mechanics
-var reel_symbols: Array[String] = [
-	"res://Sprites/cherry.png",
-	"res://Sprites/lemon.png", 
-	"res://Sprites/orange.png",
-	"res://Sprites/bell.png",
-	"res://Sprites/star.png",
-	"res://Sprites/diamond.png",
-	"res://Sprites/seven.png"
-]
-var reel_symbol_names: Array[String] = ["Cherry", "Lemon", "Orange", "Bell", "Star", "Diamond", "Seven"]
-var loaded_textures: Array[Texture2D] = []
+var ui_manager: SlotMachineUI
+var reel_manager: SlotMachineReels
+var handle_manager: SlotMachineHandle
+var audio_manager: SlotMachineAudio
+
 var is_spinning: bool = false
-
-# Animation system - symbols only, not containers
-var final_symbols: Array[int] = [0, 0, 0]
-var spin_tweens: Array[Tween] = []
-
-# Upgrade shop
-var upgrade_shop_scene = null
-
-# Audio with null safety
-@onready var audio_spin = $Audio/SpinSound
-@onready var audio_win = $Audio/WinSound
-@onready var audio_lose = $Audio/LoseSound
-@onready var audio_evil_laugh = $Audio/EvilLaugh
+var current_spin_result: Dictionary
 
 func _ready():
-	print("🎰 Starting SlotMachine scene...")
+	setup_components()
+	connect_signals()
+	initialize_game()
+
+func setup_components():
+	ui_manager = $UI as SlotMachineUI
+	reel_manager = $ReelManager as SlotMachineReels
+	handle_manager = $HandleManager as SlotMachineHandle
+	audio_manager = $AudioManager as SlotMachineAudio
 	
-	# Connect to GameManager signals with error handling
+	if not ui_manager:
+		push_error("SlotMachineUI component not found!")
+	if not reel_manager:
+		push_error("SlotMachineReels component not found!")
+	if not handle_manager:
+		push_error("SlotMachineHandle component not found!")
+	if not audio_manager:
+		push_error("SlotMachineAudio component not found!")
+
+func connect_signals():
 	if GameManager.has_signal("coins_changed"):
 		GameManager.coins_changed.connect(_on_coins_changed)
 	if GameManager.has_signal("debt_changed"):
 		GameManager.debt_changed.connect(_on_debt_changed)
-	if GameManager.has_signal("spin_completed"):
-		GameManager.spin_completed.connect(_on_spin_completed)
 	if GameManager.has_signal("evil_laugh_trigger"):
-		GameManager.evil_laugh_trigger.connect(_on_evil_laugh)
+		GameManager.evil_laugh_trigger.connect(_on_evil_laugh_trigger)
 	
-	# Preload textures safely
-	preload_symbol_textures()
+	if ui_manager:
+		ui_manager.spin_button_pressed.connect(_on_spin_requested)
+		ui_manager.upgrade_button_pressed.connect(_on_upgrade_requested)
 	
-	# Set up handle with proper mouse tracking
-	setup_handle()
+	if handle_manager:
+		handle_manager.handle_pulled.connect(_on_spin_requested)
 	
-	# Connect button signals with null checks
-	if spin_button:
-		spin_button.pressed.connect(_on_spin_button_pressed)
-	if upgrade_button:
-		upgrade_button.pressed.connect(_on_upgrade_button_pressed)
-	
-	# Initialize reels
-	initialize_reels()
-	
-	# Initialize UI
+	if reel_manager:
+		reel_manager.animation_completed.connect(_on_reel_animation_completed)
+
+func initialize_game():
 	update_ui()
-	
-	print("✅ SlotMachine initialization complete")
+	if reel_manager:
+		reel_manager.initialize_reels()
 
-func preload_symbol_textures():
-	"""Safely preload all symbol textures"""
-	loaded_textures.clear()
-	
-	for i in range(reel_symbols.size()):
-		var symbol_path = reel_symbols[i]
-		var texture: Texture2D = null
-		
-		if ResourceLoader.exists(symbol_path):
-			texture = load(symbol_path) as Texture2D
-		
-		if texture:
-			loaded_textures.append(texture)
-			print("✅ Loaded: ", reel_symbol_names[i])
-		else:
-			print("❌ Failed: ", symbol_path)
-			loaded_textures.append(null)
-	
-	print("🎨 Textures loaded: ", loaded_textures.size(), "/", reel_symbols.size())
+func _on_spin_requested():
+	if can_perform_spin():
+		perform_spin()
 
-func setup_handle():
-	"""Set up handle with proper global mouse tracking"""
-	if not handle:
-		print("⚠️ Handle not found")
+func can_perform_spin() -> bool:
+	return not is_spinning and GameManager.can_spin()
+
+func perform_spin():
+	if not can_perform_spin():
 		return
 	
-	handle_original_pos = handle.position
-	
-	# Create input detector with proper size
-	var input_detector = Control.new()
-	input_detector.name = "InputDetector"
-	input_detector.size = handle.size if handle.size != Vector2.ZERO else Vector2(50, 100)
-	input_detector.position = Vector2.ZERO  # Position relative to handle
-	input_detector.gui_input.connect(_on_handle_input)
-	input_detector.mouse_filter = Control.MOUSE_FILTER_PASS
-	handle.add_child(input_detector)
-	
-	print("🕹️ Handle setup complete - Size: ", input_detector.size)
-
-func initialize_reels():
-	"""Initialize reels with random symbols"""
-	var reels = [reel1, reel2, reel3]
-	
-	for i in range(reels.size()):
-		if reels[i]:
-			var random_symbol = randi() % reel_symbols.size()
-			final_symbols[i] = random_symbol
-			display_symbol_on_reel(reels[i], random_symbol)
-
-func display_symbol_on_reel(reel_control: Control, symbol_index: int):
-	"""Display a single symbol on a reel - containers stay in place"""
-	if not reel_control:
-		return
-	
-	# Clear existing children
-	for child in reel_control.get_children():
-		child.queue_free()
-	
-	# Wait one frame for children to be freed
-	await get_tree().process_frame
-	
-	# Create symbol display at normal position (0, 0) within the reel container
-	if symbol_index < loaded_textures.size() and loaded_textures[symbol_index]:
-		# Use texture
-		var texture_rect = TextureRect.new()
-		texture_rect.texture = loaded_textures[symbol_index]
-		texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		texture_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		texture_rect.position = Vector2.ZERO  # Start at container's origin
-		texture_rect.size = reel_control.size
-		reel_control.add_child(texture_rect)
-	else:
-		# Fallback to text
-		var label = Label.new()
-		if symbol_index < reel_symbol_names.size():
-			label.text = reel_symbol_names[symbol_index]
-		else:
-			label.text = "?"
-		
-		label.add_theme_font_size_override("font_size", 24)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.position = Vector2.ZERO
-		label.size = reel_control.size
-		reel_control.add_child(label)
-
-# Fixed handle input system
-func _on_handle_input(event):
-	"""Handle input with proper mouse tracking"""
-	if is_spinning or not GameManager.can_spin():
-		return
-	
-	if event is InputEventMouseButton:
-		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			start_handle_drag(event.global_position)
-		elif not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			release_handle()
-	
-	elif event is InputEventMouseMotion and is_handle_dragging:
-		update_handle_drag(event.global_position)
-
-# Global mouse release detection to fix sticky handle
-func _input(event):
-	"""Global input handling to catch mouse release anywhere"""
-	if event is InputEventMouseButton:
-		if not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			if is_handle_dragging:
-				release_handle()
-
-func start_handle_drag(global_mouse_pos: Vector2):
-	"""Start handle dragging with proper position tracking"""
-	if not handle:
-		return
-	
-	print("🖱️ Handle drag started")
-	is_handle_dragging = true
-	handle_pulled = false
-	drag_start_pos = global_mouse_pos
-	
-	# Stop any existing handle animation
-	if handle_tween and handle_tween.is_valid():
-		handle_tween.kill()
-
-func update_handle_drag(global_mouse_pos: Vector2):
-	"""Update handle position based on mouse movement"""
-	if not handle or not is_handle_dragging:
-		return
-	
-	# Calculate pull distance from initial click position
-	var pull_distance = global_mouse_pos.y - drag_start_pos.y
-	pull_distance = max(0, pull_distance)  # Only allow downward pull
-	
-	# Update handle position with clamping
-	var new_y = handle_original_pos.y + min(pull_distance, handle_pull_threshold)
-	handle.position.y = new_y
-	
-	# Check if pulled enough to trigger spin
-	if pull_distance >= handle_pull_threshold and not handle_pulled:
-		handle_pulled = true
-		print("🎰 Handle pulled - triggering spin!")
-		trigger_spin()
-
-func release_handle():
-	"""Release handle and animate back to original position"""
-	if not is_handle_dragging:
-		return
-	
-	print("🖱️ Handle released")
-	is_handle_dragging = false
-	
-	# Animate handle back to original position
-	if handle:
-		handle_tween = create_tween()
-		handle_tween.tween_property(handle, "position", handle_original_pos, handle_return_speed)
-		handle_tween.tween_callback(func(): handle_pulled = false)
-
-func _on_spin_button_pressed():
-	"""Handle spin button press"""
-	if not is_spinning and GameManager.can_spin():
-		trigger_spin()
-
-func trigger_spin():
-	"""Start the spinning process with kick-up animation"""
-	if is_spinning or not GameManager.can_spin():
-		return
-	
-	print("🎰 Starting spin with kick-up animation...")
 	is_spinning = true
+	spin_started.emit()
 	
-	# Get spin result first
 	var spin_result = GameManager.perform_spin()
 	if not spin_result.get("success", true):
-		print("❌ Spin failed: ", spin_result.get("reason", "unknown"))
 		is_spinning = false
 		return
 	
-	# Set final symbols based on result
-	set_final_symbols_from_result(spin_result)
+	current_spin_result = spin_result
 	
-	# Disable controls
-	if spin_button:
-		spin_button.disabled = true
+	if ui_manager:
+		ui_manager.set_spinning_state(true)
 	
-	# Play audio safely
-	play_audio(audio_spin)
+	if audio_manager and enable_audio:
+		audio_manager.play_spin_sound()
 	
-	# Start with kick-up animation, then spinning
-	start_kickup_animation()
+	if reel_manager:
+		var symbols = determine_symbols_from_result(spin_result)
+		reel_manager.start_spin_animation(symbols)
 
-func set_final_symbols_from_result(result: Dictionary):
-	"""Set the final symbols based on the spin result"""
-	print("🎯 Setting symbols for result: ", result.type)
+func determine_symbols_from_result(result: Dictionary) -> Array[int]:
+	var symbols: Array[int] = [0, 0, 0]
 	
 	match result.type:
 		"jackpot":
-			final_symbols = [6, 6, 6]  # Seven is at index 6
-			print("🎉 JACKPOT: Three Sevens!")
-		
+			symbols = [6, 6, 6]  # Three sevens
 		"coin_win", "debt_win":
-			var winning_symbol = randi() % 5  # Use first 5 symbols for wins
-			var different_symbol = (winning_symbol + 1 + randi() % 4) % reel_symbols.size()
-			final_symbols = [winning_symbol, winning_symbol, different_symbol]
-			print("💰 WIN: ", reel_symbol_names[winning_symbol], " x2 + ", reel_symbol_names[different_symbol])
-		
-		_:  # "loss" or any other case
-			var symbol1 = randi() % reel_symbols.size()
-			var symbol2 = (symbol1 + 1 + randi() % 3) % reel_symbols.size()
-			var symbol3 = (symbol2 + 1 + randi() % 3) % reel_symbols.size()
-			final_symbols = [symbol1, symbol2, symbol3]
-			print("💸 LOSS: ", reel_symbol_names[symbol1], ", ", reel_symbol_names[symbol2], ", ", reel_symbol_names[symbol3])
+			var winning_symbol = randi() % 5
+			var different_symbol = (winning_symbol + 1 + randi() % 4) % 7
+			symbols = [winning_symbol, winning_symbol, different_symbol]
+		_:  # Loss
+			symbols[0] = randi() % 7
+			symbols[1] = (symbols[0] + 1 + randi() % 3) % 7
+			symbols[2] = (symbols[1] + 1 + randi() % 3) % 7
+	
+	return symbols
 
-func start_kickup_animation():
-	"""Start with kick-up animation - move symbols UP inside containers"""
-	var reels = [reel1, reel2, reel3]
-	
-	# Clear any existing tweens
-	clear_spin_tweens()
-	
-	print("⬆️ Starting kick-up animation...")
-	
-	# Create kick-up animation for symbols inside each reel
-	for i in range(reels.size()):
-		if not reels[i]:
-			continue
-		
-		var reel = reels[i]
-		
-		# Get the symbol child inside the reel container
-		if reel.get_child_count() > 0:
-			var symbol_node = reel.get_child(0)
-			
-			# Create kick-up tween for the symbol (not the container)
-			var kickup_tween = create_tween()
-			spin_tweens.append(kickup_tween)
-			
-			# Move symbol UP by kick_up_distance
-			var original_pos = Vector2.ZERO  # Symbols start at (0,0) within container
-			var kick_target = Vector2(0, -kick_up_distance)
-			
-			kickup_tween.tween_property(symbol_node, "position", kick_target, kick_up_duration)
-			kickup_tween.tween_callback(func(): start_individual_reel_spin(i))
-
-func start_individual_reel_spin(reel_index: int):
-	"""Start spinning animation for an individual reel"""
-	var reels = [reel1, reel2, reel3]
-	if reel_index >= reels.size() or not reels[reel_index]:
-		return
-	
-	var reel = reels[reel_index]
-	var final_symbol = final_symbols[reel_index]
-	
-	print("🎡 Starting spin for reel ", reel_index + 1)
-	
-	# Create main spinning tween
-	var spin_tween = create_tween()
-	spin_tweens.append(spin_tween)
-	
-	# Calculate timing with stagger
-	var spin_duration = base_spin_duration + (reel_index * spin_stagger_delay)
-	
-	# Spin symbols inside the container (containers stay in place)
-	spin_tween.tween_method(
-		func(progress): animate_symbol_spin(reel, progress, final_symbol),
-		0.0,
-		1.0,  # Progress from 0 to 1
-		spin_duration
-	).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUART)
-	
-	# When the last reel finishes, complete the spin
-	if reel_index == reels.size() - 1:
-		spin_tween.tween_callback(complete_spin)
-
-func animate_symbol_spin(reel: Control, progress: float, final_symbol: int):
-	"""Animate symbol spinning inside the reel container (container stays in place)"""
-	if not reel:
-		return
-	
-	# Calculate symbol rotation (multiple full rotations)
-	var total_angle = progress * 360.0 * total_rotations
-	var symbol_count = reel_symbols.size()
-	var current_symbol_index = int(total_angle / (360.0 / symbol_count)) % symbol_count
-	
-	# In the last 20% of animation, lock to final symbol
-	if progress > 0.8:
-		current_symbol_index = final_symbol
-	
-	# Clear existing symbol children
-	for child in reel.get_children():
-		child.queue_free()
-	
-	# Calculate symbol position within container (move down from kick-up to normal)
-	var symbol_y_pos = lerp(-kick_up_distance, 0.0, progress)
-	
-	# Create symbol at calculated position
-	if current_symbol_index < loaded_textures.size() and loaded_textures[current_symbol_index]:
-		var texture_rect = TextureRect.new()
-		texture_rect.texture = loaded_textures[current_symbol_index]
-		texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		texture_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
-		texture_rect.position = Vector2(0, symbol_y_pos)  # Animate Y position within container
-		texture_rect.size = reel.size
-		
-		# Add spinning wobble effect (only during active spinning)
-		if progress < 0.8:
-			var wobble_intensity = (1.0 - progress) * 10.0  # Decrease wobble as it slows down
-			texture_rect.rotation = deg_to_rad(sin(total_angle * 0.1) * wobble_intensity)
-		
-		reel.add_child(texture_rect)
-	else:
-		# Text fallback
-		var label = Label.new()
-		if current_symbol_index < reel_symbol_names.size():
-			label.text = reel_symbol_names[current_symbol_index]
-		else:
-			label.text = "?"
-		
-		label.add_theme_font_size_override("font_size", 24)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.position = Vector2(0, symbol_y_pos)
-		label.size = reel.size
-		
-		if progress < 0.8:
-			var wobble_intensity = (1.0 - progress) * 10.0
-			label.rotation = deg_to_rad(sin(total_angle * 0.1) * wobble_intensity)
-		
-		reel.add_child(label)
-
-func clear_spin_tweens():
-	"""Clear all active spin tweens"""
-	for tween in spin_tweens:
-		if tween and tween.is_valid():
-			tween.kill()
-	spin_tweens.clear()
-
-func complete_spin():
-	"""Complete the spin and show results"""
-	print("🎉 Spin animation complete")
+func _on_reel_animation_completed():
 	is_spinning = false
 	
-	# Re-enable controls
-	if spin_button:
-		spin_button.disabled = false
+	if ui_manager:
+		ui_manager.set_spinning_state(false)
+		ui_manager.display_result(current_spin_result)
 	
-	# Ensure final symbols are displayed at normal position (0,0) within containers
-	var reels = [reel1, reel2, reel3]
-	for i in range(reels.size()):
-		if reels[i]:
-			display_symbol_on_reel(reels[i], final_symbols[i])
+	play_result_audio(current_spin_result)
+	spin_completed.emit(current_spin_result)
+	
+	if not GameManager.can_spin():
+		call_deferred("trigger_evil_laugh")
 
-func _on_spin_completed(result: Dictionary):
-	"""Handle spin completion from GameManager"""
-	if not result_label:
+func play_result_audio(result: Dictionary):
+	if not audio_manager or not enable_audio:
 		return
 	
-	# Display result with color coding
 	match result.type:
-		"jackpot":
-			result_label.text = "🎉 JACKPOT! DEBT CLEARED! 🎉"
-			result_label.modulate = Color.GOLD
-			play_audio(audio_win)
-		
-		"coin_win":
-			result_label.text = "💰 WON " + str(result.coins_won) + " COINS! 💰"
-			result_label.modulate = Color.GREEN
-			play_audio(audio_win)
-		
-		"debt_win":
-			result_label.text = "💳 DEBT REDUCED BY $" + str(result.debt_reduction) + "! 💳"
-			result_label.modulate = Color.BLUE
-			play_audio(audio_win)
-		
-		_:  # Loss
-			result_label.text = "💸 YOU LOSE! 💸"
-			result_label.modulate = Color.RED
-			play_audio(audio_lose)
-	
-	# Clear result after delay
-	await get_tree().create_timer(3.0).timeout
-	if result_label:
-		result_label.text = ""
+		"jackpot", "coin_win", "debt_win":
+			audio_manager.play_win_sound()
+		_:
+			audio_manager.play_lose_sound()
 
-func _on_evil_laugh():
-	"""Handle evil laugh with safe audio"""
-	print("😈 EVIL LAUGH TRIGGERED!")
+func trigger_evil_laugh():
+	await get_tree().create_timer(2.0).timeout
 	
-	play_audio(audio_evil_laugh)
+	if audio_manager and enable_audio:
+		audio_manager.play_evil_laugh()
 	
-	# Screen shake effect
-	create_screen_shake()
+	if enable_screen_shake:
+		create_screen_shake()
 	
-	# Show evil message
-	if result_label:
-		result_label.text = "😈 MWAHAHAHA! TO THE MAZE! 😈"
-		result_label.modulate = Color.RED
+	if ui_manager:
+		ui_manager.show_evil_message()
 	
-	# Transition after delay
+	evil_laugh_triggered.emit()
+	
 	await get_tree().create_timer(4.0).timeout
 	transition_to_pacman()
 
 func create_screen_shake():
-	"""Create screen shake effect safely"""
+	if not enable_screen_shake:
+		return
+	
 	var shake_tween = create_tween()
 	var original_position = position
 	
 	for i in range(8):
-		var shake_offset = Vector2(randf_range(-3, 3), randf_range(-3, 3))
+		var shake_offset = Vector2(
+			randf_range(-shake_intensity, shake_intensity),
+			randf_range(-shake_intensity, shake_intensity)
+		)
 		shake_tween.tween_property(self, "position", original_position + shake_offset, 0.1)
 	
 	shake_tween.tween_property(self, "position", original_position, 0.1)
 
 func transition_to_pacman():
-	"""Safely transition to Pacman scene"""
-	print("🚀 Transitioning to Pacman scene...")
 	var pacman_scene_path = "res://Scenes/PacmanScene.tscn"
-	
 	if ResourceLoader.exists(pacman_scene_path):
 		get_tree().change_scene_to_file(pacman_scene_path)
 	else:
-		print("❌ Pacman scene not found!")
+		push_error("Pacman scene not found at: " + pacman_scene_path)
 
-func _on_upgrade_button_pressed():
-	"""Handle upgrade button press"""
-	if upgrade_shop_scene:
-		upgrade_shop_scene.show_shop()
-		return
-	
-	var upgrade_scene_path = "res://Scenes/UpgradeShop.tscn"
-	if ResourceLoader.exists(upgrade_scene_path):
-		upgrade_shop_scene = preload("res://Scenes/UpgradeShop.tscn").instantiate()
-		add_child(upgrade_shop_scene)
-		upgrade_shop_scene.show_shop()
-	else:
-		print("❌ Upgrade shop scene not found!")
+func _on_upgrade_requested():
+	if ui_manager:
+		ui_manager.show_upgrade_shop()
 
 func _on_coins_changed(_new_amount: int):
-	"""Handle coins changed signal"""
 	update_ui()
 
 func _on_debt_changed(_new_amount: int):
-	"""Handle debt changed signal"""
 	update_ui()
-	
-	# Check win condition
-	if GameManager.is_game_won():
-		show_victory_screen()
+	if GameManager.is_game_won() and ui_manager:
+		ui_manager.show_victory_screen()
+
+func _on_evil_laugh_trigger():
+	trigger_evil_laugh()
 
 func update_ui():
-	"""Update UI elements safely"""
-	if debt_label:
-		debt_label.text = "DEBT: $" + str(GameManager.total_debt)
-	
-	if coins_label:
-		coins_label.text = "COINS: " + str(GameManager.current_coins)
-		
-		# Color coding for stress
-		if GameManager.current_coins < 10:
-			coins_label.modulate = Color.RED
-		elif GameManager.current_coins < 25:
-			coins_label.modulate = Color.YELLOW
-		else:
-			coins_label.modulate = Color.WHITE
-	
-	# Update button states
-	if spin_button:
-		var can_spin = GameManager.can_spin() and not is_spinning
-		spin_button.disabled = not can_spin
-		var spin_cost = GameManager.get_spin_cost()
-		spin_button.text = "SPIN ($" + str(spin_cost) + ")"
-	
-	# Hide upgrade button during tutorial
-	if upgrade_button:
-		upgrade_button.visible = not GameManager.is_tutorial_mode
+	if ui_manager:
+		ui_manager.update_display()
 
-func show_victory_screen():
-	"""Show victory screen safely"""
-	var victory_popup = AcceptDialog.new()
-	victory_popup.dialog_text = "🎉 CONGRATULATIONS! YOU'VE PAID OFF YOUR DEBT! 🎉"
-	add_child(victory_popup)
-	victory_popup.popup_centered()
-	
-	# Auto-close after 5 seconds
-	await get_tree().create_timer(5.0).timeout
-	if victory_popup and is_instance_valid(victory_popup):
-		victory_popup.queue_free()
+func get_spin_cost() -> int:
+	return GameManager.get_spin_cost()
 
-func play_audio(audio_player: AudioStreamPlayer2D):
-	"""Safely play audio with null checking"""
-	if not audio_player:
-		return
-	
-	if not audio_player.stream:
-		print("⚠️ Audio player has no stream")
-		return
-	
-	if audio_player.playing:
-		audio_player.stop()
-	
-	audio_player.play()
+func get_current_coins() -> int:
+	return GameManager.current_coins
 
-# Cleanup function
-func _exit_tree():
-	"""Clean up when exiting"""
-	clear_spin_tweens()
-	
-	if handle_tween and handle_tween.is_valid():
-		handle_tween.kill()
+func get_current_debt() -> int:
+	return GameManager.total_debt
+
+func is_tutorial_mode() -> bool:
+	return GameManager.is_tutorial_mode
