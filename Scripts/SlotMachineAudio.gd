@@ -1,39 +1,42 @@
 extends Node
 class_name SlotMachineAudio
 
-@export_group("Audio Settings")
-@export var master_volume: float = 1.0
-@export var spin_volume: float = 1.0
-@export var win_volume: float = 1.0
-@export var lose_volume: float = 1.0
-@export var evil_laugh_volume: float = 1.0
-
 @export_group("Audio Clips")
 @export var spin_sound: AudioStream
 @export var win_sound: AudioStream
 @export var lose_sound: AudioStream
 @export var evil_laugh_sound: AudioStream
+@export var reel_stop_sound: AudioStream
 
 @export_group("Playback Settings")
 @export var enable_audio: bool = true
-@export var interrupt_on_new_sound: bool = true
+@export var interrupt_on_new_sound: bool = false
 
 @onready var spin_player = $SpinSound
 @onready var win_player = $WinSound
 @onready var lose_player = $LoseSound
 @onready var evil_laugh_player = $EvilLaugh
+@onready var reel_stop_player = $ReelStopSound
 
-var controller: SlotMachineController
+var config: SlotMachineConfig
+
+func setup_with_config(slot_config: SlotMachineConfig):
+	config = slot_config
+	if config:
+		setup_audio_players()
 
 func _ready():
-	controller = get_parent() as SlotMachineController
 	setup_audio_players()
 
 func setup_audio_players():
-	setup_player(spin_player, spin_sound, spin_volume)
-	setup_player(win_player, win_sound, win_volume)
-	setup_player(lose_player, lose_sound, lose_volume)
-	setup_player(evil_laugh_player, evil_laugh_sound, evil_laugh_volume)
+	if not config:
+		return
+	
+	setup_player(spin_player, spin_sound, 1.0)
+	setup_player(win_player, win_sound, config.win_volume)
+	setup_player(lose_player, lose_sound, 1.0)
+	setup_player(evil_laugh_player, evil_laugh_sound, config.jackpot_volume)
+	setup_player(reel_stop_player, reel_stop_sound, config.reel_stop_volume)
 
 func setup_player(player: AudioStreamPlayer2D, stream: AudioStream, volume: float):
 	if not player:
@@ -42,7 +45,8 @@ func setup_player(player: AudioStreamPlayer2D, stream: AudioStream, volume: floa
 	if stream:
 		player.stream = stream
 	
-	player.volume_db = linear_to_db(volume * master_volume)
+	var final_volume = volume * (config.master_volume if config else 1.0)
+	player.volume_db = linear_to_db(final_volume)
 
 func play_spin_sound():
 	play_audio(spin_player)
@@ -56,8 +60,11 @@ func play_lose_sound():
 func play_evil_laugh():
 	play_audio(evil_laugh_player)
 
+func play_reel_stop_sound():
+	play_audio(reel_stop_player)
+
 func play_audio(player: AudioStreamPlayer2D):
-	if not enable_audio or not player or not player.stream:
+	if not enable_audio or not player:
 		return
 	
 	if interrupt_on_new_sound and player.playing:
@@ -74,10 +81,13 @@ func stop_all_audio():
 		lose_player.stop()
 	if evil_laugh_player:
 		evil_laugh_player.stop()
+	if reel_stop_player:
+		reel_stop_player.stop()
 
 func set_master_volume(volume: float):
-	master_volume = clamp(volume, 0.0, 1.0)
-	setup_audio_players()
+	if config:
+		config.master_volume = clamp(volume, 0.0, 1.0)
+		setup_audio_players()
 
 func set_audio_enabled(enabled: bool):
 	enable_audio = enabled

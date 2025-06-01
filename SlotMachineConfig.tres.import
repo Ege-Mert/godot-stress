@@ -1,0 +1,13 @@
+[remap]
+
+importer="godot_resource"
+type="SlotMachineConfig"
+uid="uid://chqd2n5r2xxdh"
+path="res://.godot/imported/SlotMachineConfig.tres-ba8c8e3bf4b73e2e31a7b71b3f6d9c9f.res"
+
+[deps]
+
+source_file="res://SlotMachineConfig.tres"
+dest_files=["res://.godot/imported/SlotMachineConfig.tres-ba8c8e3bf4b73e2e31a7b71b3f6d9c9f.res"]
+
+[params]
