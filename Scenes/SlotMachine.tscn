@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://basd2gdjb4kmg" path="res://Scripts/SlotMachine.gd" id="1_8qfso"]
 [ext_resource type="Script" uid="uid://ddufmvo5nkmah" path="res://Scripts/SlotMachineConfig.gd" id="2_dq6t6"]
-[ext_resource type="Script" uid="uid://qhx628in5qjg" path="res://Scripts/SymbolData.gd" id="3_glh05"]
+[ext_resource type="Script" uid="uid://bmt2g7hpfxsyq" path="res://Scripts/SymbolData.gd" id="3_glh05"]
 [ext_resource type="Script" uid="uid://by2utq613keoa" path="res://Scripts/SlotMachineUI.gd" id="3_ui"]
 [ext_resource type="Texture2D" uid="uid://ujmkpbyd0qh7" path="res://Sprites/bell.png" id="4_7juld"]
 [ext_resource type="Script" uid="uid://rhv7x764486a" path="res://Scripts/SlotMachineReels.gd" id="4_reels"]
@@ -253,6 +253,13 @@ layout_mode = 2
 layout_mode = 2
 text = "UPGRADES"
 
+[node name="HSeparator2" type="HSeparator" parent="UI/BottomPanel"]
+layout_mode = 2
+
+[node name="PacmanButton" type="Button" parent="UI/BottomPanel"]
+layout_mode = 2
+text = "PAC-MAN"
+
 [node name="PayoutTable" type="Panel" parent="UI"]
 visible = false
 layout_mode = 1
@@ -289,6 +296,7 @@ script = ExtResource("4_reels")
 reel_strip_1 = ExtResource("14_6oclk")
 reel_strip_2 = ExtResource("15_82gwb")
 reel_strip_3 = ExtResource("16_y6xhg")
+spin_delay_between_reels = 0.4
 
 [node name="Reels" type="HBoxContainer" parent="ReelManager"]
 z_index = -95

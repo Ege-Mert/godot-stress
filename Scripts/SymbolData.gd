@@ -24,6 +24,14 @@ func get_payout_for_matches(match_count: int) -> int:
 		_:
 			return 0
 
+func validate_symbol() -> bool:
+	# Ensure multipliers are reasonable
+	if two_match_multiplier <= 0.0 or three_match_multiplier <= 0.0:
+		return false
+	if base_payout_amount < 0:
+		return false
+	return true
+
 func get_payout_description() -> String:
 	var desc = symbol_name + ": "
 	match payout_type:

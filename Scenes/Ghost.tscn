@@ -1,6 +1,6 @@
 [gd_scene load_steps=4 format=3 uid="uid://c8an8bs4u66mb"]
 
-[ext_resource type="Script" uid="uid://ymgggwgt56q1" path="res://Scripts/Ghost.gd" id="1_ghost"]
+[ext_resource type="Script" uid="uid://c3ghrtm8x56pw" path="res://Scripts/ImprovedGhostAI.gd" id="1_rcd3j"]
 [ext_resource type="Texture2D" uid="uid://mjwlcbi3nccu" path="res://Sprites/pacman-characters_0001_Layer-10.png" id="2_rcd3j"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_ghost"]
@@ -8,7 +8,7 @@ radius = 64.0
 
 [node name="Ghost" type="CharacterBody2D"]
 scale = Vector2(0.25, 0.25)
-script = ExtResource("1_ghost")
+script = ExtResource("1_rcd3j")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 scale = Vector2(0.8, 0.8)

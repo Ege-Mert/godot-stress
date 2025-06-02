@@ -130,10 +130,13 @@ func create_trail_particle():
 	var tween = create_tween()
 	tween.tween_property(trail_particle, "modulate:a", 0.0, 0.8)  # Shorter duration
 	tween.parallel().tween_property(trail_particle, "scale", trail_particle.scale * 0.3, 0.8)
-	tween.tween_callback(func(): 
-		current_trail_count -= 1
-		trail_particle.queue_free()
-	)
+	# Use a safer callback method that doesn't capture 'self'
+	tween.tween_callback(_on_trail_particle_finished.bind(trail_particle))
+
+func _on_trail_particle_finished(particle: Sprite2D):
+	current_trail_count -= 1
+	if is_instance_valid(particle):
+		particle.queue_free()
 
 func _on_player_detected(body):
 	print("🔍 Wall ghost detected collision with: ", body.name, " (class: ", body.get_class(), ")")

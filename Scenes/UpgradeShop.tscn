@@ -71,48 +71,48 @@ layout_mode = 2
 text = "SLOT MACHINE UPGRADES"
 horizontal_alignment = 1
 
-[node name="BetterOdds" type="HBoxContainer" parent="UpgradePanel/MainContainer/SlotUpgrades"]
+[node name="WinFrequency" type="HBoxContainer" parent="UpgradePanel/MainContainer/SlotUpgrades"]
 layout_mode = 2
 
-[node name="UpgradeButton" type="Button" parent="UpgradePanel/MainContainer/SlotUpgrades/BetterOdds"]
+[node name="UpgradeButton" type="Button" parent="UpgradePanel/MainContainer/SlotUpgrades/WinFrequency"]
 layout_mode = 2
-text = "Better Odds"
+text = "WinFrequency"
 
-[node name="LevelLabel" type="Label" parent="UpgradePanel/MainContainer/SlotUpgrades/BetterOdds"]
+[node name="LevelLabel" type="Label" parent="UpgradePanel/MainContainer/SlotUpgrades/WinFrequency"]
 layout_mode = 2
 text = "Level: 0"
 
-[node name="CostLabel" type="Label" parent="UpgradePanel/MainContainer/SlotUpgrades/BetterOdds"]
+[node name="CostLabel" type="Label" parent="UpgradePanel/MainContainer/SlotUpgrades/WinFrequency"]
 layout_mode = 2
 text = "Cost: 50"
 
-[node name="CoinMultiplier" type="HBoxContainer" parent="UpgradePanel/MainContainer/SlotUpgrades"]
+[node name="PayoutBoost" type="HBoxContainer" parent="UpgradePanel/MainContainer/SlotUpgrades"]
 layout_mode = 2
 
-[node name="UpgradeButton" type="Button" parent="UpgradePanel/MainContainer/SlotUpgrades/CoinMultiplier"]
+[node name="UpgradeButton" type="Button" parent="UpgradePanel/MainContainer/SlotUpgrades/PayoutBoost"]
 layout_mode = 2
-text = "Coin Multiplier"
+text = "PayoutBoost"
 
-[node name="LevelLabel" type="Label" parent="UpgradePanel/MainContainer/SlotUpgrades/CoinMultiplier"]
+[node name="LevelLabel" type="Label" parent="UpgradePanel/MainContainer/SlotUpgrades/PayoutBoost"]
 layout_mode = 2
 text = "Level: 0"
 
-[node name="CostLabel" type="Label" parent="UpgradePanel/MainContainer/SlotUpgrades/CoinMultiplier"]
+[node name="CostLabel" type="Label" parent="UpgradePanel/MainContainer/SlotUpgrades/PayoutBoost"]
 layout_mode = 2
 text = "Cost: 100"
 
-[node name="ReducedCost" type="HBoxContainer" parent="UpgradePanel/MainContainer/SlotUpgrades"]
+[node name="LuckySpin" type="HBoxContainer" parent="UpgradePanel/MainContainer/SlotUpgrades"]
 layout_mode = 2
 
-[node name="UpgradeButton" type="Button" parent="UpgradePanel/MainContainer/SlotUpgrades/ReducedCost"]
+[node name="UpgradeButton" type="Button" parent="UpgradePanel/MainContainer/SlotUpgrades/LuckySpin"]
 layout_mode = 2
-text = "Reduced Cost"
+text = "LuckySpin"
 
-[node name="LevelLabel" type="Label" parent="UpgradePanel/MainContainer/SlotUpgrades/ReducedCost"]
+[node name="LevelLabel" type="Label" parent="UpgradePanel/MainContainer/SlotUpgrades/LuckySpin"]
 layout_mode = 2
 text = "Level: 0"
 
-[node name="CostLabel" type="Label" parent="UpgradePanel/MainContainer/SlotUpgrades/ReducedCost"]
+[node name="CostLabel" type="Label" parent="UpgradePanel/MainContainer/SlotUpgrades/LuckySpin"]
 layout_mode = 2
 text = "Cost: 75"
 
@@ -143,33 +143,33 @@ text = "Level: 0"
 layout_mode = 2
 text = "Cost: 40"
 
-[node name="Invincibility" type="HBoxContainer" parent="UpgradePanel/MainContainer/PacmanUpgrades"]
+[node name="CoinRadar" type="HBoxContainer" parent="UpgradePanel/MainContainer/PacmanUpgrades"]
 layout_mode = 2
 
-[node name="UpgradeButton" type="Button" parent="UpgradePanel/MainContainer/PacmanUpgrades/Invincibility"]
+[node name="UpgradeButton" type="Button" parent="UpgradePanel/MainContainer/PacmanUpgrades/CoinRadar"]
 layout_mode = 2
-text = "Invincibility"
+text = "CoinRadar"
 
-[node name="LevelLabel" type="Label" parent="UpgradePanel/MainContainer/PacmanUpgrades/Invincibility"]
+[node name="LevelLabel" type="Label" parent="UpgradePanel/MainContainer/PacmanUpgrades/CoinRadar"]
 layout_mode = 2
 text = "Level: 0"
 
-[node name="CostLabel" type="Label" parent="UpgradePanel/MainContainer/PacmanUpgrades/Invincibility"]
+[node name="CostLabel" type="Label" parent="UpgradePanel/MainContainer/PacmanUpgrades/CoinRadar"]
 layout_mode = 2
 text = "Cost: 150"
 
-[node name="CoinMagnetism" type="HBoxContainer" parent="UpgradePanel/MainContainer/PacmanUpgrades"]
+[node name="GhostSlowdown" type="HBoxContainer" parent="UpgradePanel/MainContainer/PacmanUpgrades"]
 layout_mode = 2
 
-[node name="UpgradeButton" type="Button" parent="UpgradePanel/MainContainer/PacmanUpgrades/CoinMagnetism"]
+[node name="UpgradeButton" type="Button" parent="UpgradePanel/MainContainer/PacmanUpgrades/GhostSlowdown"]
 layout_mode = 2
-text = "Coin Magnetism"
+text = "GhostSlowdown"
 
-[node name="LevelLabel" type="Label" parent="UpgradePanel/MainContainer/PacmanUpgrades/CoinMagnetism"]
+[node name="LevelLabel" type="Label" parent="UpgradePanel/MainContainer/PacmanUpgrades/GhostSlowdown"]
 layout_mode = 2
 text = "Level: 0"
 
-[node name="CostLabel" type="Label" parent="UpgradePanel/MainContainer/PacmanUpgrades/CoinMagnetism"]
+[node name="CostLabel" type="Label" parent="UpgradePanel/MainContainer/PacmanUpgrades/GhostSlowdown"]
 layout_mode = 2
 text = "Cost: 80"
 

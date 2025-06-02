@@ -93,11 +93,20 @@ func setup_screen_adaptation():
 	print("Screen adaptation: tilemap_rect=", tilemap_rect, " actual_size=", actual_game_size, " scale=", scale_factor, " position=", position)
 
 func _ready():
+	# Wait one frame to ensure everything is properly loaded on web
+	await get_tree().process_frame
+	
+	# Verify critical nodes exist before proceeding
+	if not verify_scene_nodes():
+		push_error("Critical scene nodes missing! Cannot initialize Pacman scene.")
+		return
+	
 	# Connect to GameManager
 	GameManager.pacman_exit_available.connect(_on_exit_available)
 	
-	# Remove this line that causes misalignment:
-	# setup_screen_adaptation()
+	# Check and fix tilemap issues first
+	if tilemap_layer:
+		debug_tilemap_issues()
 	
 	# Initialize all components
 	initialize_components()
@@ -107,6 +116,123 @@ func _ready():
 	
 	# Start GameManager pacman stage
 	GameManager.start_pacman_stage()
+
+func verify_scene_nodes() -> bool:
+	# Check for critical nodes and initialize them if @onready failed
+	if not player:
+		player = get_node_or_null("Player")
+		if not player:
+			print("ERROR: Player node not found! Attempting to create backup player...")
+			# Try to create a backup player as last resort
+			if create_backup_player():
+				print("Backup player created successfully!")
+			else:
+				print("Failed to create backup player!")
+				return false
+	
+	if not tilemap_layer:
+		tilemap_layer = get_node_or_null("TileMapLayer")
+		if not tilemap_layer:
+			print("ERROR: TileMapLayer node not found!")
+			return false
+	
+	if not exit_gates:
+		exit_gates = get_node_or_null("ExitGates")
+		if not exit_gates:
+			print("ERROR: ExitGates node not found!")
+			return false
+	
+	if not ghost_container:
+		ghost_container = get_node_or_null("Ghosts")
+		if not ghost_container:
+			print("ERROR: Ghosts container not found!")
+			return false
+	
+	# UI nodes
+	if not ui:
+		ui = get_node_or_null("UI")
+		if not ui:
+			print("ERROR: UI node not found!")
+			return false
+	
+	if not coins_collected_label:
+		coins_collected_label = get_node_or_null("UI/CoinsLabel")
+		if not coins_collected_label:
+			print("ERROR: CoinsLabel not found!")
+			return false
+	
+	if not exit_prompt_label:
+		exit_prompt_label = get_node_or_null("UI/ExitPrompt")
+		if not exit_prompt_label:
+			print("ERROR: ExitPrompt not found!")
+			return false
+	
+	if not warning_label:
+		warning_label = get_node_or_null("UI/WarningLabel")
+		if not warning_label:
+			print("ERROR: WarningLabel not found!")
+			return false
+	
+	# Audio nodes
+	if not audio_coin_pickup:
+		audio_coin_pickup = get_node_or_null("Audio/CoinPickup")
+		if not audio_coin_pickup:
+			print("WARNING: Audio/CoinPickup not found!")
+	
+	if not audio_ghost_spawn:
+		audio_ghost_spawn = get_node_or_null("Audio/GhostSpawn")
+		if not audio_ghost_spawn:
+			print("WARNING: Audio/GhostSpawn not found!")
+	
+	if not audio_death:
+		audio_death = get_node_or_null("Audio/Death")
+		if not audio_death:
+			print("WARNING: Audio/Death not found!")
+	
+	if not audio_gate_open:
+		audio_gate_open = get_node_or_null("Audio/GateOpen")
+		if not audio_gate_open:
+			print("WARNING: Audio/GateOpen not found!")
+	
+	# Optional: coin_container might not exist
+	if not coin_container:
+		coin_container = get_node_or_null("Coins")
+		# This is optional, so don't fail if it doesn't exist
+	
+	print("Scene node verification completed successfully!")
+	return true
+
+func create_backup_player() -> bool:
+	# Create a backup player node if the original failed to load
+	player = CharacterBody2D.new()
+	player.name = "Player"
+	player.add_to_group("player")
+	
+	# Add sprite
+	var sprite = Sprite2D.new()
+	sprite.modulate = Color.YELLOW
+	sprite.scale = Vector2(0.2, 0.2)
+	# Try to load the player texture
+	var texture = load("res://Sprites/pacman-characters_0002_Layer-11.png")
+	if texture:
+		sprite.texture = texture
+	player.add_child(sprite)
+	
+	# Add collision shape
+	var collision = CollisionShape2D.new()
+	var shape = CircleShape2D.new()
+	shape.radius = 25.0
+	collision.shape = shape
+	player.add_child(collision)
+	
+	# Set initial position
+	player.position = Vector2(984, 736)  # Default position from scene
+	
+	# Add to scene
+	add_child(player)
+	
+	print("Backup player created at position: ", player.position)
+	return true
 
 func initialize_components():
 	# Create utility component first (other components depend on it)
@@ -122,7 +248,22 @@ func initialize_components():
 	player_controller.base_move_speed = base_move_speed
 	player_controller.movement_precision = movement_smoothness
 	add_child(player_controller)
+	
+	# Verify player node exists before initializing
+	if not player:
+		push_error("Player node is null! Cannot initialize player controller.")
+		return
+	
+	if not tilemap_layer:
+		push_error("TileMapLayer is null! Cannot initialize player controller.")
+		return
+	
+	if not utility:
+		push_error("Utility is null! Cannot initialize player controller.")
+		return
+	
 	player_controller.initialize(player, tilemap_layer, utility)
+	print("Player controller initialized successfully with player at: ", player.position)
 	
 	# Initialize ghost manager
 	ghost_manager = PacmanGhostManager.new()
@@ -176,7 +317,6 @@ func connect_component_signals():
 	
 	# Coin manager signals
 	coin_manager.coin_collected.connect(_on_coin_collected)
-	coin_manager.magnetism_triggered.connect(_on_magnetism_triggered)
 	
 	# Game state signals
 	game_state.exit_unlocked.connect(_on_exit_unlocked_state)
@@ -190,11 +330,24 @@ func connect_component_signals():
 	audio_manager.audio_played.connect(_on_audio_played)
 
 func setup_game():
+	# Add web-specific debugging
+	if OS.has_feature("web"):
+		print("[WEB DEBUG] Setting up Pacman game...")
+		print("[WEB DEBUG] Player node: ", player)
+		print("[WEB DEBUG] Player position: ", player.position if player else "PLAYER IS NULL")
+		print("[WEB DEBUG] Player controller: ", player_controller)
+		print("[WEB DEBUG] TileMap layer: ", tilemap_layer)
+	
 	# Apply upgrades before setting up the game
 	apply_upgrades()
 	
 	# Set player starting position
-	player_controller.set_starting_position(player_start_pos)
+	if player_controller:
+		player_controller.set_starting_position(player_start_pos)
+		print("[DEBUG] Player starting position set to: ", player_start_pos)
+	else:
+		push_error("Cannot set player starting position - player_controller is null!")
+		return
 	
 	# Setup initial game state
 	game_state.setup_initial_state()
@@ -208,6 +361,10 @@ func setup_game():
 	
 	# Update UI
 	update_ui()
+	
+	# Web-specific final verification
+	if OS.has_feature("web"):
+		print("[WEB DEBUG] Game setup completed. Final player position: ", player.position if player else "PLAYER IS NULL")
 
 func apply_upgrades():
 	# Apply movement speed upgrade
@@ -237,10 +394,7 @@ func _on_player_moved(new_grid_pos: Vector2):
 	# Check for coin collection at new position
 	coin_manager.check_coin_collection(new_grid_pos)
 	
-	# Apply coin magnetism
-	var magnetism_level = GameManager.pacman_upgrades.coin_magnetism
-	if magnetism_level > 0:
-		coin_manager.apply_coin_magnetism(player_controller.get_current_world_position(), magnetism_level)
+	# Note: coin_magnetism upgrade was removed - no automatic collection
 
 func _on_player_reached_target():
 	# Check for gate collision if exit is available
@@ -256,9 +410,6 @@ func _on_coin_collected(total_coins: int):
 		ghost_manager.spawn_wall_phasing_ghost()
 	
 	update_ui()
-
-func _on_magnetism_triggered(coins_collected: Array):
-	print("Magnetism collected ", coins_collected.size(), " coins")
 
 func _on_normal_ghost_caught_player():
 	audio_manager.play_death()
@@ -298,13 +449,20 @@ func _on_debt_trap_triggered():
 	screen_flash.tween_property(get_viewport(), "canvas_transform", 
 		Transform2D.IDENTITY, 0.1)
 	
-	# Wait for message to be read, then transition
-	await get_tree().create_timer(3.0).timeout
-	
-	# Return coins to GameManager and transition
+	# Use a safer timer method with immediate transition
+	call_deferred("_immediate_debt_trap_transition")
+
+func _immediate_debt_trap_transition():
+	# Return coins to GameManager immediately
 	var _coins_earned = GameManager.exit_pacman_stage()
-	await get_tree().process_frame
-	get_tree().change_scene_to_file("res://Scenes/SlotMachine.tscn")
+	
+	# Transition immediately without timer to avoid tree issues
+	if is_inside_tree():
+		get_tree().change_scene_to_file("res://Scenes/SlotMachine.tscn")
+	else:
+		# Fallback: use GameManager to handle scene change
+		print("Using GameManager fallback for scene transition")
+		GameManager.call_deferred("_safe_scene_change", "res://Scenes/SlotMachine.tscn")
 
 func _on_ui_message_displayed(message: String):
 	print("UI Message: ", message)
@@ -326,3 +484,22 @@ func exit_pacman_stage():
 	
 	# Transition back to slot machine
 	get_tree().change_scene_to_file("res://Scenes/SlotMachine.tscn")
+
+# Debug function to identify tilemap issues
+func debug_tilemap_issues():
+	print("=== TILEMAP DEBUG ===")
+	
+	if not tilemap_layer:
+		print("ERROR: No tilemap_layer found!")
+		return
+	
+	var tileset = tilemap_layer.tile_set
+	if not tileset:
+		print("ERROR: No tileset assigned to tilemap!")
+		return
+	
+	print("TileSet has ", tileset.get_source_count(), " sources")
+	var used_rect = tilemap_layer.get_used_rect()
+	print("Used rect: ", used_rect)
+	print("Tilemap layer name: ", tilemap_layer.name)
+	print("======================")
