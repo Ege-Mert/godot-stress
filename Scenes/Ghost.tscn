@@ -1,33 +1,21 @@
-[gd_scene load_steps=3 format=3 uid="uid://c8an8bs4u66mb"]
+[gd_scene load_steps=4 format=3 uid="uid://c8an8bs4u66mb"]
 
 [ext_resource type="Script" uid="uid://ymgggwgt56q1" path="res://Scripts/Ghost.gd" id="1_ghost"]
+[ext_resource type="Texture2D" uid="uid://mjwlcbi3nccu" path="res://Sprites/pacman-characters_0001_Layer-10.png" id="2_rcd3j"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_ghost"]
-radius = 12.0
+radius = 64.0
 
 [node name="Ghost" type="CharacterBody2D"]
+scale = Vector2(0.25, 0.25)
 script = ExtResource("1_ghost")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
-modulate = Color(1, 0.2, 0.2, 0.8)
 scale = Vector2(0.8, 0.8)
+texture = ExtResource("2_rcd3j")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("CircleShape2D_ghost")
-
-[node name="Label" type="Label" parent="."]
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -15.0
-offset_top = -12.0
-offset_right = 15.0
-offset_bottom = 12.0
-text = "👻"
-horizontal_alignment = 1
-vertical_alignment = 1
 
 [node name="DetectionArea" type="Area2D" parent="."]
 

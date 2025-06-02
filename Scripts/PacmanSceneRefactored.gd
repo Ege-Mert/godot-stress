@@ -63,31 +63,41 @@ var utility: PacmanUtility
 @export var enable_audio: bool = true ## Enable/disable all audio
 
 func setup_screen_adaptation():
-	# Get the viewport size
+	# Get the actual tilemap bounds instead of hardcoded values
+	var tilemap_rect = tilemap_layer.get_used_rect()
+	var actual_game_size = Vector2(
+		tilemap_rect.size.x * tile_size,
+		tilemap_rect.size.y * tile_size
+	)
+	
 	var viewport_size = get_viewport().get_visible_rect().size
-	var game_area_size = Vector2(640, 640)  # Approximate game area size
 	
 	# Calculate scale to fit screen while maintaining aspect ratio
 	var scale_factor = min(
-		viewport_size.x / game_area_size.x,
-		viewport_size.y / game_area_size.y
+		viewport_size.x / actual_game_size.x,
+		viewport_size.y / actual_game_size.y
 	) * 0.9  # 90% of screen to leave some padding
 	
 	# Apply scale to the entire scene
 	scale = Vector2(scale_factor, scale_factor)
 	
-	# Center the scaled content
-	var scaled_size = game_area_size * scale_factor
-	position = (viewport_size - scaled_size) / 2
+	# Center based on actual tilemap position
+	var tilemap_world_pos = Vector2(
+		tilemap_rect.position.x * tile_size,
+		tilemap_rect.position.y * tile_size
+	)
 	
-	print("Screen adaptation: viewport=", viewport_size, " scale=", scale_factor, " position=", position)
+	var scaled_size = actual_game_size * scale_factor
+	position = (viewport_size - scaled_size) / 2 - tilemap_world_pos * scale_factor
+	
+	print("Screen adaptation: tilemap_rect=", tilemap_rect, " actual_size=", actual_game_size, " scale=", scale_factor, " position=", position)
 
 func _ready():
 	# Connect to GameManager
 	GameManager.pacman_exit_available.connect(_on_exit_available)
 	
-	# Center and scale the level for different screen sizes
-	setup_screen_adaptation()
+	# Remove this line that causes misalignment:
+	# setup_screen_adaptation()
 	
 	# Initialize all components
 	initialize_components()
