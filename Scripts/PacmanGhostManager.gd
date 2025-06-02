@@ -45,17 +45,29 @@ func spawn_initial_ghosts():
 	var positions_to_use = ghost_spawn_positions.slice(0, initial_ghost_count)
 	
 	for pos in positions_to_use:
-		spawn_normal_ghost(pos)
+		call_deferred("spawn_normal_ghost", pos)
 
 func spawn_normal_ghost(grid_pos: Vector2):
 	var ghost = preload("res://Scenes/Ghost.tscn").instantiate()
 	ghost.position = utility.grid_to_world(grid_pos)
-	ghost.setup_normal_ai(tilemap_layer)
+	
+	# Initialize ghost AI properly - check which method exists
+	if ghost.has_method("initialize"):
+		ghost.initialize(player, tilemap_layer)
+	elif ghost.has_method("setup_normal_ai"):
+		# Check if it expects parameters
+		if ghost.get_method_list().any(func(method): return method.name == "setup_normal_ai" and method.args.size() == 0):
+			ghost.setup_normal_ai()
+		else:
+			ghost.setup_normal_ai(tilemap_layer)
+	
 	ghost_container.add_child(ghost)
 	normal_ghosts.append(ghost)
 	
 	# Connect death signal
-	ghost.player_caught.connect(_on_normal_ghost_caught_player)
+	if ghost.has_signal("player_caught"):
+		ghost.player_caught.connect(_on_normal_ghost_caught_player)
+	
 	ghost_spawned.emit("normal")
 
 func spawn_wall_phasing_ghost():
@@ -63,10 +75,20 @@ func spawn_wall_phasing_ghost():
 		return
 	
 	print("Spawning wall-phasing ghost...")
+	# Use call_deferred to avoid physics query conflicts
+	call_deferred("_spawn_wall_phasing_ghost_deferred")
+
+func _spawn_wall_phasing_ghost_deferred():
 	wall_phasing_ghost_spawned = true
 	wall_phasing_ghost = preload("res://Scenes/WallPhasingGhost.tscn").instantiate()
 	wall_phasing_ghost.position = utility.grid_to_world(wall_ghost_spawn_position)
-	wall_phasing_ghost.setup_phasing_ai(player)
+	
+	# Initialize ghost properly - check which method exists
+	if wall_phasing_ghost.has_method("initialize"):
+		wall_phasing_ghost.initialize(player, tilemap_layer)
+	elif wall_phasing_ghost.has_method("setup_phasing_ai"):
+		wall_phasing_ghost.setup_phasing_ai(player)
+	
 	ghost_container.add_child(wall_phasing_ghost)
 	
 	# Connect death signal
@@ -84,7 +106,7 @@ func update_ghost_spawning(delta: float, coins_collected: int, coins_needed_for_
 		ghost_spawn_timer += delta
 		if ghost_spawn_timer >= ghost_spawn_interval:
 			ghost_spawn_timer = 0.0
-			spawn_additional_ghost()
+			call_deferred("spawn_additional_ghost")
 
 func spawn_additional_ghost():
 	# Use configured ghost spawn positions

@@ -7,6 +7,7 @@ signal picked_up
 @onready var animation_player = $AnimationPlayer
 
 var is_collected: bool = false
+var grid_position: Vector2  # Store grid position for persistence
 
 func _ready():
 	# Connect to player detection
@@ -37,7 +38,14 @@ func _on_body_entered(body):
 		collect()
 
 func collect():
+	if is_collected:
+		return  # Prevent double collection
+		
 	is_collected = true
+	
+	# Disable collision immediately to prevent multiple triggers
+	if collision:
+		collision.disabled = true
 	
 	# Emit signal
 	picked_up.emit()
@@ -47,5 +55,39 @@ func collect():
 	tween.parallel().tween_property(sprite, "scale", Vector2(1.5, 1.5), 0.1)
 	tween.parallel().tween_property(sprite, "modulate:a", 0.0, 0.2)
 	
-	# Remove after animation
-	tween.tween_callback(queue_free)
+	# Hide completely after animation
+	tween.tween_callback(_on_collection_complete)
+
+func _on_collection_complete():
+	# Hide the coin but don't queue_free it (for persistence)
+	hide()
+	set_process(false)
+	set_physics_process(false)
+	# Disable collision to prevent invisible collection
+	if collision:
+		collision.disabled = true
+
+func set_collected_state(collected: bool):
+	"""Set whether this coin should be considered collected"""
+	is_collected = collected
+	if collected:
+		# Hide and disable collision
+		hide()
+		set_process(false)
+		set_physics_process(false)
+		if collision:
+			collision.disabled = true
+	else:
+		# Show and enable collision
+		show()
+		set_process(true)
+		set_physics_process(true)
+		if collision:
+			collision.disabled = false
+		if sprite:
+			sprite.modulate.a = 1.0  # Reset alpha
+			sprite.scale = Vector2(1.5, 1.5)  # Reset scale
+
+func reset():
+	"""Reset coin to uncollected state"""
+	set_collected_state(false)
