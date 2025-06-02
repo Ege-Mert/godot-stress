@@ -8,8 +8,10 @@ var is_first_spin: bool = true
 var is_first_pacman: bool = true
 var has_collected_first_10_coins: bool = false
 var is_tutorial_mode: bool = true  # Track tutorial state
-var game_session_started: bool = false  # Track if this is truly the first game session
-var first_spin_completed: bool = false  # Track if the very first spin ever has been done
+
+# Game state tracking
+var game_session_started: bool = false
+var first_spin_completed: bool = false
 
 # Upgrade levels
 var slot_upgrades = {
@@ -40,17 +42,31 @@ signal pacman_exit_available()
 signal evil_laugh_trigger()
 
 func _ready():
+	# Web-safe random seeding
+	if OS.has_feature("web"):
+		randomize()  # Uses time-based seed on web
+	else:
+		seed(OS.get_process_id() + Time.get_unix_time_from_system())
+	
 	# Set up autoload persistence
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	
 	# Only set first spin on true first load, not on scene reloads
 	if not game_session_started:
+		# First time launching the game
 		game_session_started = true
 		is_first_spin = true
 		first_spin_completed = false
-		print("Game session started - first spin will have special odds")
+		print("Game session started - first spin will have tutorial override")
 	else:
-		print("Scene reloaded - maintaining spin state")
+		# Scene reloaded or revisited
+		print("Scene reloaded - maintaining previous game state")
+	
+	# Debug current state
+	print("DEBUG GameManager state:")
+	print("  is_first_spin: ", is_first_spin)
+	print("  first_spin_completed: ", first_spin_completed)
+	print("  game_session_started: ", game_session_started)
 
 # Check these variables in GameManager
 	print("DEBUG GameManager state:")
